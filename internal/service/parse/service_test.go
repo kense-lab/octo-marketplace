@@ -56,6 +56,40 @@ func TestInitUploadRejectsUnsafeZipFileName(t *testing.T) {
 	}
 }
 
+func TestInitIconUploadRejectsUnsafeFileName(t *testing.T) {
+	svc := NewService(stubStorage{}, nil, nil, func() string { return "icon-1" }, 20)
+	for _, fileName := range []string{
+		"../icon.png",
+		"nested/icon.png",
+		`nested\icon.png`,
+		"icon..png",
+	} {
+		t.Run(fileName, func(t *testing.T) {
+			_, err := svc.InitIconUpload(context.Background(), fileName, 1024, "user-1")
+			if err != ErrInvalidFileName {
+				t.Fatalf("expected ErrInvalidFileName, got %v", err)
+			}
+		})
+	}
+}
+
+func TestInitMcpIconUploadRejectsUnsafeFileName(t *testing.T) {
+	svc := NewService(stubStorage{}, nil, nil, func() string { return "icon-1" }, 20)
+	for _, fileName := range []string{
+		"../icon.png",
+		"nested/icon.png",
+		`nested\icon.png`,
+		"icon..png",
+	} {
+		t.Run(fileName, func(t *testing.T) {
+			_, err := svc.InitMcpIconUpload(context.Background(), fileName, 1024)
+			if err != ErrInvalidFileName {
+				t.Fatalf("expected ErrInvalidFileName, got %v", err)
+			}
+		})
+	}
+}
+
 func TestTriggerParseReturnsConflictWhenPendingStateWasConsumed(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	if err != nil {

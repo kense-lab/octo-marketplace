@@ -11,36 +11,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (h *Handler) RegisterAdmin(rg *gin.RouterGroup, idGen func() string, authEnabled bool) {
+func (h *Handler) RegisterAdmin(r *gin.Engine, adminAuth *middleware.AdminAuthenticator, idGen func() string) {
 	h.idGen = idGen
-	admin := rg.Group("/admin/skill_categories", requireAdmin(authEnabled))
+	admin := r.Group("/api/v1/admin/skill_categories", adminAuth.Handler())
 	admin.POST("", h.AdminCreate)
 	admin.PATCH("/:skill_category_id", h.AdminUpdate)
 	admin.DELETE("/:skill_category_id", h.AdminDelete)
 
-	legacy := rg.Group("/skill/admin/categories", requireAdmin(authEnabled), legacyCategoryEndpoint)
+	legacy := r.Group("/api/v1/skill/admin/categories", adminAuth.Handler(), legacyCategoryEndpoint)
 	legacy.POST("", h.AdminCreate)
 	legacy.PUT("/:skill_category_id", h.AdminUpdate)
 	legacy.DELETE("/:skill_category_id", h.AdminDelete)
-}
-
-func requireAdmin(authEnabled bool) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !authEnabled {
-			c.Next()
-			return
-		}
-		identity, ok := middleware.Identity(c)
-		if !ok {
-			apiresponse.Fail(c, http.StatusUnauthorized, errcode.Unauthorized, "authentication is required", nil, "")
-			return
-		}
-		if identity.Role != "admin" {
-			apiresponse.Fail(c, http.StatusForbidden, errcode.PermissionDenied, "admin access is required", nil, "")
-			return
-		}
-		c.Next()
-	}
 }
 
 type AdminCategoryRequest struct {
@@ -51,7 +32,7 @@ type AdminCategoryRequest struct {
 
 // AdminCreate godoc
 // @Summary Create Skill category
-// @Description Create a Skill category through the authenticated administrator surface.
+// @Description Create a Skill category through the admin-token protected administrator surface.
 // @Tags skill_category
 // @ID skill_category.create
 // @Accept json
@@ -85,7 +66,7 @@ func (h *Handler) AdminCreate(c *gin.Context) {
 
 // AdminUpdate godoc
 // @Summary Update Skill category
-// @Description Replace mutable fields of an existing Skill category.
+// @Description Replace mutable fields of an existing Skill category through the admin-token protected administrator surface.
 // @Tags skill_category
 // @ID skill_category.update
 // @Accept json
@@ -124,7 +105,7 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 
 // AdminDelete godoc
 // @Summary Delete Skill category
-// @Description Delete an unused Skill category; categories referenced by Skills are rejected.
+// @Description Delete an unused Skill category through the admin-token protected administrator surface; categories referenced by Skills are rejected.
 // @Tags skill_category
 // @ID skill_category.delete
 // @Accept json

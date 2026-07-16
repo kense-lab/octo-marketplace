@@ -43,6 +43,10 @@ func testSetup(t *testing.T) (*gin.Engine, sqlmock.Sqlmock, *sql.DB) {
 }
 
 func doRequest(engine *gin.Engine, method, path string, body interface{}) *httptest.ResponseRecorder {
+	return doRequestWithHeaders(engine, method, path, body, nil)
+}
+
+func doRequestWithHeaders(engine *gin.Engine, method, path string, body interface{}, headers map[string]string) *httptest.ResponseRecorder {
 	var bodyReader *bytes.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -52,6 +56,9 @@ func doRequest(engine *gin.Engine, method, path string, body interface{}) *httpt
 	}
 	req := httptest.NewRequest(method, path, bodyReader)
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, req)
 	return w
@@ -680,16 +687,13 @@ func TestReuploadNonOwner(t *testing.T) {
 
 // --- Admin Auth Tests (AUTH_ENABLED=true) ---
 
-func TestAdminCreateCategoryNonAdminForbidden(t *testing.T) {
-	// Create a router with AUTH_ENABLED=true but a non-admin user
+func TestAdminCreateCategoryIgnoresIdentityRoleWhenAdminTokenMatches(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	_ = mock
 
-	// Auth enabled, user role is "member" (not admin)
 	auth := marketmiddleware.NewAuthenticator(false, nil, model.Identity{
 		UID:  "user-1",
 		Name: "Alice",
@@ -701,33 +705,33 @@ func TestAdminCreateCategoryNonAdminForbidden(t *testing.T) {
 		BaseURL:  "http://localhost:8092",
 		MaxMB:    20,
 	}
-	// Use PublicWithAuthEnabled to test with auth enabled admin checks
 	engine := router.PublicWithDBAndAuth(db, auth, storageCfg, true)
 
-	w := doRequest(engine, "POST", "/api/v1/skill/admin/categories", map[string]interface{}{
-		"name":     "Test",
-		"icon_key": "star",
-	})
+	mock.ExpectExec("INSERT INTO categories").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	if w.Code != http.StatusForbidden {
-		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusForbidden, w.Body.String())
+	w := doRequestWithHeaders(engine, "POST", "/api/v1/skill/admin/categories", map[string]interface{}{
+		"name":       "Test",
+		"icon_key":   "star",
+		"sort_order": 1,
+	}, map[string]string{"X-Admin-Token": "sekret"})
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusCreated, w.Body.String())
 	}
-	body := parseBody(t, w)
-	errorBody := body["error"].(map[string]interface{})
-	if errorBody["code"] != errcode.PermissionDenied {
-		t.Errorf("code=%v want=%v", errorBody["code"], errcode.PermissionDenied)
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestAdminCreateCategoryAdminAllowed(t *testing.T) {
-	// Create a router with AUTH_ENABLED=true and an admin user
+func TestAdminCreateCategoryMissingAdminTokenUnauthorized(t *testing.T) {
 	db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherRegexp))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	_ = mock
 
-	// Auth enabled, user role is "admin"
 	auth := marketmiddleware.NewAuthenticator(false, nil, model.Identity{
 		UID:  "admin-1",
 		Name: "Admin",
@@ -741,17 +745,19 @@ func TestAdminCreateCategoryAdminAllowed(t *testing.T) {
 	}
 	engine := router.PublicWithDBAndAuth(db, auth, storageCfg, true)
 
-	mock.ExpectExec("INSERT INTO categories").
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
 	w := doRequest(engine, "POST", "/api/v1/skill/admin/categories", map[string]interface{}{
 		"name":       "Admin Category",
 		"icon_key":   "shield",
 		"sort_order": 1,
 	})
 
-	if w.Code != http.StatusCreated {
-		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusCreated, w.Body.String())
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusUnauthorized, w.Body.String())
+	}
+	body := parseBody(t, w)
+	errorBody := body["error"].(map[string]interface{})
+	if errorBody["code"] != errcode.Unauthorized {
+		t.Errorf("code=%v want=%v", errorBody["code"], errcode.Unauthorized)
 	}
 }
 

@@ -195,6 +195,10 @@ func normalizeUploadFileName(fileName string) (string, error) {
 	if !strings.HasSuffix(strings.ToLower(fileName), ".zip") {
 		return "", ErrInvalidFileName
 	}
+	return normalizeObjectFileName(fileName)
+}
+
+func normalizeObjectFileName(fileName string) (string, error) {
 	if fileName == "" || fileName != filepath.Base(fileName) {
 		return "", ErrInvalidFileName
 	}
@@ -301,10 +305,14 @@ type IconUploadResult struct {
 
 // InitIconUpload generates a presigned URL for uploading a skill icon image.
 func (s *Service) InitIconUpload(ctx context.Context, fileName string, fileSize int64, ownerID string) (*IconUploadResult, error) {
+	fileName = strings.TrimSpace(fileName)
 	// Validate image extension
 	lower := strings.ToLower(fileName)
 	if !strings.HasSuffix(lower, ".png") && !strings.HasSuffix(lower, ".jpg") && !strings.HasSuffix(lower, ".jpeg") && !strings.HasSuffix(lower, ".svg") {
 		return nil, errors.New("file must be an image (png/jpg/jpeg/svg)")
+	}
+	if _, err := normalizeObjectFileName(fileName); err != nil {
+		return nil, ErrInvalidFileName
 	}
 	// Limit icon to 2MB
 	if fileSize > 2*1024*1024 {
@@ -365,6 +373,7 @@ func (s *Service) GetDownloadURL(ctx context.Context, objectKey string) (string,
 // (png / jpg / jpeg / webp / gif). ownerID may be empty when the caller is
 // an admin (no user identity) — we don't tie the object key to a subject.
 func (s *Service) InitMcpIconUpload(ctx context.Context, fileName string, fileSize int64) (*IconUploadResult, error) {
+	fileName = strings.TrimSpace(fileName)
 	lower := strings.ToLower(fileName)
 	if !strings.HasSuffix(lower, ".png") &&
 		!strings.HasSuffix(lower, ".jpg") &&
@@ -372,6 +381,9 @@ func (s *Service) InitMcpIconUpload(ctx context.Context, fileName string, fileSi
 		!strings.HasSuffix(lower, ".webp") &&
 		!strings.HasSuffix(lower, ".gif") {
 		return nil, errors.New("file must be an image (png/jpg/jpeg/webp/gif)")
+	}
+	if _, err := normalizeObjectFileName(fileName); err != nil {
+		return nil, ErrInvalidFileName
 	}
 	if fileSize > 2*1024*1024 {
 		return nil, ErrFileTooLarge

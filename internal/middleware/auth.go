@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -105,50 +104,6 @@ func (a *Authenticator) Handler() gin.HandlerFunc {
 	}
 }
 
-// WrapMarket is the authenticator for the MCP catalog endpoints. It performs
-// the same token + Space resolution as Handler but renders the marketplace wire
-// contract (docs/api/mcp-v1.md §1/§2): the {"err":{code,message}} envelope with
-// err.marketplace.auth.* codes.
-func (a *Authenticator) WrapMarket(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !a.enabled {
-			spaceID := strings.TrimSpace(r.Header.Get("X-Space-Id"))
-			if spaceID == "" {
-				spaceID = a.devSpaceID
-			}
-			next.ServeHTTP(w, r.WithContext(withAuthContext(r.Context(), a.devIdentity, spaceID)))
-			return
-		}
-
-		token := requestTokenFromHTTP(r)
-		if token == "" {
-			writeMarketError(w, http.StatusUnauthorized, "err.marketplace.auth.unauthorized", "Missing or invalid Octo token")
-			return
-		}
-		if a.resolver == nil {
-			writeMarketError(w, http.StatusInternalServerError, "err.marketplace.internal", "Internal server error")
-			return
-		}
-		identity, err := a.resolver.Resolve(r.Context(), token)
-		if err != nil {
-			writeMarketError(w, http.StatusInternalServerError, "err.marketplace.internal", "Internal server error")
-			return
-		}
-		if identity.UID == "" || !identity.ContextIncluded {
-			writeMarketError(w, http.StatusUnauthorized, "err.marketplace.auth.unauthorized", "Missing or invalid Octo token")
-			return
-		}
-
-		spaceID := strings.TrimSpace(r.Header.Get("X-Space-Id"))
-		if spaceID == "" || !contains(identity.Spaces, spaceID) {
-			writeMarketError(w, http.StatusForbidden, "err.marketplace.auth.forbidden_space", "Missing X-Space-Id or Space membership denied")
-			return
-		}
-
-		next.ServeHTTP(w, r.WithContext(withAuthContext(r.Context(), identity, spaceID)))
-	})
-}
-
 func (a *Authenticator) authenticateBot(c *gin.Context, token string) {
 	if a.botResolver == nil {
 		abortError(c, http.StatusServiceUnavailable, "UPSTREAM_UNAVAILABLE", "Authentication service is unavailable.")
@@ -238,17 +193,6 @@ func requestToken(c *gin.Context) string {
 	return ""
 }
 
-func requestTokenFromHTTP(r *http.Request) string {
-	if token := strings.TrimSpace(r.Header.Get("Token")); token != "" {
-		return token
-	}
-	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
-	if len(authorization) > 7 && strings.EqualFold(authorization[:7], "Bearer ") {
-		return strings.TrimSpace(authorization[7:])
-	}
-	return ""
-}
-
 func contains(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {
@@ -260,18 +204,4 @@ func contains(values []string, target string) bool {
 
 func abortError(c *gin.Context, status int, code, message string) {
 	apiresponse.Fail(c, status, code, message, nil, "")
-}
-
-// writeMarketError renders the marketplace wire envelope (doc §2):
-// {"err":{"code":..,"message":..}}.
-func writeMarketError(w http.ResponseWriter, status int, code, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error": map[string]any{
-			"code":    code,
-			"message": message,
-			"details": map[string]any{},
-		},
-	})
 }

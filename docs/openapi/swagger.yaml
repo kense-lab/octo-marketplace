@@ -1120,7 +1120,7 @@ paths:
       - admin_mcp
   /admin/skill_categories:
     post:
-      description: Create a Skill category through the authenticated administrator
+      description: Create a Skill category through the admin-token protected administrator
         surface.
       operationId: skill_category.create
       requestBody:
@@ -1178,8 +1178,8 @@ paths:
       - skill_category
   /admin/skill_categories/{skill_category_id}:
     delete:
-      description: Delete an unused Skill category; categories referenced by Skills
-        are rejected.
+      description: Delete an unused Skill category through the admin-token protected
+        administrator surface; categories referenced by Skills are rejected.
       operationId: skill_category.delete
       parameters:
       - description: Skill category ID
@@ -1236,7 +1236,8 @@ paths:
       tags:
       - skill_category
     patch:
-      description: Replace mutable fields of an existing Skill category.
+      description: Replace mutable fields of an existing Skill category through the
+        admin-token protected administrator surface.
       operationId: skill_category.update
       parameters:
       - description: Skill category ID

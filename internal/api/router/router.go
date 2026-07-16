@@ -122,7 +122,7 @@ func publicWithOptions(database Pinger, authenticator *marketmiddleware.Authenti
 
 		catH := categoryhandler.New(catSvc)
 		catH.Register(v1)
-		catH.RegisterAdmin(v1, generateID, authEnabled)
+		catH.RegisterAdmin(r, adminAuth, generateID)
 		skillhandler.New(skSvc).Register(v1)
 
 		parseRepo := parsesvc.NewRepo(db)
@@ -229,6 +229,10 @@ func PublicWithDB(db *sql.DB, authenticator *marketmiddleware.Authenticator, sto
 
 // PublicWithDBAndAuth is a test helper that overrides the authEnabled flag for admin routes.
 func PublicWithDBAndAuth(db *sql.DB, authenticator *marketmiddleware.Authenticator, storageCfg StorageConfig, authEnabled bool) *gin.Engine {
-	adminAuth := marketmiddleware.NewAdminAuthenticator(false, "", model.Identity{})
+	adminToken := ""
+	if authEnabled {
+		adminToken = "sekret"
+	}
+	adminAuth := marketmiddleware.NewAdminAuthenticator(authEnabled, adminToken, model.Identity{})
 	return publicWithOptions(db, authenticator, adminAuth, storageCfg, nil, nil, authEnabled)
 }

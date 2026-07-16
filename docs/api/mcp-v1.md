@@ -5,10 +5,11 @@
 > Consumers: `octo-web`, later `octo-cli`
 > Related brief: `.octospec/tasks/mcp-catalog-v1/brief.md`
 
-This document is the authoritative wire contract for the MCP CRUD slice of
-octo-marketplace. Handler code, tests, and client integration must match this
-document exactly. Do not extend the surface here without first updating this
-file and getting review sign-off.
+This document is the authoritative behavior contract for the MCP CRUD slice of
+octo-marketplace. The exact generated wire schema lives in
+`docs/openapi/swagger.yaml`; handler code, tests, and client integration must
+stay aligned with both. Do not extend the surface here without first updating
+this file and getting review sign-off.
 
 ---
 
@@ -50,54 +51,45 @@ to present a valid Octo token.
 Server-side flow on every business request:
 
 1. Resolve `token` → `Identity{uid, name}` via `internal/auth`. Reject with
-   `err.marketplace.auth.unauthorized` on failure.
-2. Read `X-Space-Id`. Missing / malformed → `err.marketplace.auth.forbidden_space`.
+   HTTP 401 / `AUTH_REQUIRED` on failure.
+2. Read `X-Space-Id`. Missing → HTTP 400 / `VALIDATION_ERROR`.
 3. Verify `uid` is a member of that Space through the authoritative Octo
-   membership probe. Failure → `err.marketplace.auth.forbidden_space`.
+   membership probe. Failure → HTTP 403 / `FORBIDDEN`.
 4. Never trust `owner_uid`, `space_id`, `creator_name` or any other identity
    field in the request body. These are stamped from step 1–3.
 
 ## 2. Error envelope
 
-Every non-2xx response uses this JSON shape:
+Every non-2xx response uses the standard OCTO OpenAPI error shape:
 
 ```json
 {
-  "err": {
-    "code": "err.marketplace.mcp.not_found",
+  "error": {
+    "code": "NOT_FOUND",
     "message": "MCP not found"
   }
 }
 ```
 
-- `code` is a stable machine-readable string. Clients switch on `code`, not
-  on `message`. **Always use the full `err.marketplace.*` form on the
-  wire.** Any short label like `not_found` in this doc's endpoint tables is
-  a readability shorthand and refers back to the full code in the catalog
-  below.
+- `code` is the stable machine-readable enum from the shared OCTO OpenAPI
+  contract (`VALIDATION_ERROR`, `AUTH_REQUIRED`, `FORBIDDEN`, `NOT_FOUND`,
+  `DUPLICATE`, `INTERNAL_ERROR`, ...). Clients switch on `code`, not on
+  `message`.
 - `message` is a human-readable summary for logs and toasts. It does not
   contain internal paths, credentials, SQL, or Go error strings.
-- Additional fields (`details`, `field`, …) may appear inside `err` for
-  validation errors — always inside `err`, never at the top level, so
-  successful responses keep the top level free.
+- Additional fields (`details`, `hint`, …) may appear inside `error` for
+  validation failures or operator guidance.
 
 ### Error code catalog
 
 | HTTP | Code (wire) | When |
 | --- | --- | --- |
-| 400 | `err.marketplace.mcp.invalid_request` | Body fails structural validation. `err.details[]` lists the offending fields. |
-| 400 | `err.marketplace.mcp.invalid_visibility` | Client tried to create/update visibility=`system`. Reserved for admin. |
-| 400 | `err.marketplace.mcp.invalid_transport` | Transport not in `stdio` / `streamable-http` / `sse`. |
-| 400 | `err.marketplace.mcp.secret_leaked` | Body carries a non-empty, non-sentinel secret value in a token-like env/header. |
-| 400 | `err.marketplace.mcp.slug_invalid` | `slug` fails `^[a-z0-9-]{1,64}$`, or was omitted AND slugifying `name` yields an empty string (all-CJK name). |
-| 400 | `err.marketplace.mcp.probe_unsupported` | `POST /mcps/probe` was called with a transport the marketplace server cannot handle (currently: stdio). See §4.7. |
-| 401 | `err.marketplace.auth.unauthorized` | Missing / invalid Octo token. |
-| 403 | `err.marketplace.auth.forbidden_space` | Missing `X-Space-Id`, or the caller is not a member of that Space. |
-| 403 | `err.marketplace.mcp.forbidden` | Caller is not the owner and is attempting a mutation. |
-| 404 | `err.marketplace.mcp.not_found` | Record does not exist, or exists in a different Space and cross-Space discovery is forbidden. |
-| 409 | `err.marketplace.mcp.name_taken` | The `(owner_uid, space_id, name)` triple already exists in a live record. |
-| 409 | `err.marketplace.mcp.slug_taken` | The `(space_id, slug)` tuple already exists in a live record (§3, per-Space uniqueness). |
-| 500 | `err.marketplace.internal` | Unclassified server error. Details are logged server-side only. |
+| 400 | `VALIDATION_ERROR` | Body fails structural validation; invalid visibility / transport / slug / secret-leak and probe-request validation all collapse to this shared enum. `error.details[]` may list offending fields. |
+| 401 | `AUTH_REQUIRED` | Missing / invalid Octo token. |
+| 403 | `FORBIDDEN` | Caller is outside the requested Space, or is not allowed to mutate the MCP. |
+| 404 | `NOT_FOUND` | Record does not exist, or exists in a different Space and cross-Space discovery is forbidden. |
+| 409 | `DUPLICATE` | Name or slug collides with another live record. |
+| 500 | `INTERNAL_ERROR` | Unclassified server error. Details are logged server-side only. |
 
 ## 3. Resource shape
 
