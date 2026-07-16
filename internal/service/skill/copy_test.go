@@ -33,6 +33,9 @@ func (f *fakeStorage) PresignPut(_ context.Context, _ string, _ string, _ time.D
 func (f *fakeStorage) PresignGet(_ context.Context, _ string, _ time.Duration) (string, error) {
 	return "", nil
 }
+func (f *fakeStorage) PublicURL(_ context.Context, key string) (string, error) {
+	return "https://cdn.test/" + key, nil
+}
 func (f *fakeStorage) GetObject(_ context.Context, _ string) (io.ReadCloser, error) {
 	return nil, nil
 }

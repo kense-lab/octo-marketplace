@@ -162,6 +162,18 @@ func (s *OSSStorage) CopyObject(ctx context.Context, srcKey, dstKey string) erro
 	return nil
 }
 
+// PublicURL returns a persistent URL that points at the object on the public
+// endpoint (CDN or custom domain), suitable for storing in DB columns. Unlike
+// PresignGet, no signature is attached — the bucket policy must allow anonymous
+// GET at this path. OSS_PUBLIC_ENDPOINT must be configured; otherwise there is
+// no stable non-signed URL we can return.
+func (s *OSSStorage) PublicURL(_ context.Context, key string) (string, error) {
+	if s.publicEndpoint == "" {
+		return "", fmt.Errorf("OSS_PUBLIC_ENDPOINT not configured; cannot construct a persistent public URL")
+	}
+	return fmt.Sprintf("%s/%s", s.publicEndpoint, s.key(key)), nil
+}
+
 func (s *OSSStorage) key(key string) string {
 	key = strings.TrimLeft(key, "/")
 	if s.keyPrefix == "" {

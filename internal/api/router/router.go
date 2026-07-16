@@ -79,6 +79,11 @@ func publicWithOptions(database Pinger, authenticator *marketmiddleware.Authenti
 	})
 
 	// Wire up skill marketplace handlers when we have a real *sql.DB.
+	// adminMcpIcon carries the MCP icon-upload handler across the closure
+	// boundary — constructed inside the db block (where pSvc lives), then
+	// handed to registerAdminMCP so it can register the admin route on the
+	// same http.ServeMux and avoid gin's wildcard-vs-static conflict.
+	var adminMcpIcon *handler.McpIcon
 	db, ok := database.(*sql.DB)
 	if ok {
 		catRepo := categoryrepo.New(db)
@@ -127,10 +132,18 @@ func publicWithOptions(database Pinger, authenticator *marketmiddleware.Authenti
 		uploadH := uploadhandler.New(pSvc, skSvc, localStorage)
 		uploadH.Register(v1)
 		uploadH.RegisterLocalProxy(r)
+
+		// MCP icon presigned upload — user surface only. `/api/v1/mcp/upload/icon`
+		// does not collide with the `/api/v1/mcps/*` wildcard mounted by
+		// registerMCP (different prefix: `mcp` vs `mcps`). The admin twin is
+		// wired inside registerAdminMCP below, sharing the same handler.
+		mcpIconH := handler.NewMcpIcon(pSvc)
+		v1.POST("/mcp/upload/icon", gin.WrapF(mcpIconH.Init))
+		adminMcpIcon = mcpIconH
 	}
 
 	registerMCP(r, authenticator, mcp)
-	registerAdminMCP(r, adminAuth, adminMCP)
+	registerAdminMCP(r, adminAuth, adminMCP, adminMcpIcon)
 	return r
 }
 
@@ -154,7 +167,9 @@ func registerMCP(r *gin.Engine, authenticator *marketmiddleware.Authenticator, m
 }
 
 // registerAdminMCP mounts the admin surface for system MCPs at /api/v1/admin/mcps.
-func registerAdminMCP(r *gin.Engine, adminAuth *marketmiddleware.AdminAuthenticator, admin *handler.AdminMCP) {
+// mcpIcon may be nil when the storage layer is not wired (Public called without
+// a real *sql.DB) — in that case the icon upload endpoint is skipped.
+func registerAdminMCP(r *gin.Engine, adminAuth *marketmiddleware.AdminAuthenticator, admin *handler.AdminMCP, mcpIcon *handler.McpIcon) {
 	if admin == nil {
 		return
 	}
@@ -166,6 +181,9 @@ func registerAdminMCP(r *gin.Engine, adminAuth *marketmiddleware.AdminAuthentica
 	rg.GET("/:mcp_id", admin.Get)
 	rg.PATCH("/:mcp_id", admin.Patch)
 	rg.DELETE("/:mcp_id", admin.Delete)
+	if mcpIcon != nil {
+		rg.POST("/upload/icon", gin.WrapF(mcpIcon.Init))
+	}
 }
 
 func deprecatedRoute(successor string) gin.HandlerFunc {

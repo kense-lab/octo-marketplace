@@ -79,6 +79,17 @@ func (s *LocalStorage) PresignGet(_ context.Context, key string, _ time.Duration
 	return url, nil
 }
 
+// PublicURL returns the persistent proxy URL for a key without checking
+// whether the file exists — unlike PresignGet, this is called BEFORE the
+// upload happens (we hand the URL back to the client to store on the
+// record, then the client PUTs the bytes to the presigned put URL).
+func (s *LocalStorage) PublicURL(_ context.Context, key string) (string, error) {
+	if _, err := s.safePath(key); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s/api/v1/_storage/download/%s", s.baseURL, key), nil
+}
+
 // GetObject opens the local file for reading.
 func (s *LocalStorage) GetObject(_ context.Context, key string) (io.ReadCloser, error) {
 	full, err := s.safePath(key)

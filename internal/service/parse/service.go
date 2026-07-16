@@ -272,6 +272,11 @@ type IconUploadResult struct {
 	ExpiresIn    int               `json:"expires_in"`
 	Method       string            `json:"method"`
 	Headers      map[string]string `json:"headers"`
+	// DownloadURL is the persistent (non-signed) URL where the icon will be
+	// reachable once the PUT completes. Callers store this on the record so
+	// that later reads never touch a signed URL. Filled by InitMcpIconUpload;
+	// legacy skill InitIconUpload leaves it empty for backwards compatibility.
+	DownloadURL string `json:"download_url,omitempty"`
 }
 
 // InitIconUpload generates a presigned URL for uploading a skill icon image.
@@ -325,4 +330,71 @@ func (s *Service) GetDownloadURL(ctx context.Context, objectKey string) (string,
 		return "", err
 	}
 	return url, nil
+}
+
+// InitMcpIconUpload is the MCP-icon-specific twin of InitIconUpload. Two
+// changes over the skill variant:
+//   1. Key prefix is `mcp-icons/{uuid}/{filename}` so MCP and Skill assets stay
+//      in separate bucket sub-trees.
+//   2. Result includes DownloadURL — the persistent URL where the icon will be
+//      reachable once the client has PUT the bytes to PresignedURL. Callers
+//      store DownloadURL on the MCP record; they never need to re-fetch a
+//      presigned GET for the same key.
+//
+// Accepts the same image formats as octo-admin's client-side validator
+// (png / jpg / jpeg / webp / gif). ownerID may be empty when the caller is
+// an admin (no user identity) — we don't tie the object key to a subject.
+func (s *Service) InitMcpIconUpload(ctx context.Context, fileName string, fileSize int64) (*IconUploadResult, error) {
+	lower := strings.ToLower(fileName)
+	if !strings.HasSuffix(lower, ".png") &&
+		!strings.HasSuffix(lower, ".jpg") &&
+		!strings.HasSuffix(lower, ".jpeg") &&
+		!strings.HasSuffix(lower, ".webp") &&
+		!strings.HasSuffix(lower, ".gif") {
+		return nil, errors.New("file must be an image (png/jpg/jpeg/webp/gif)")
+	}
+	if fileSize > 2*1024*1024 {
+		return nil, ErrFileTooLarge
+	}
+
+	id := s.idGen()
+	objectKey := fmt.Sprintf("mcp-icons/%s/%s", id, fileName)
+
+	contentType := "image/png"
+	switch {
+	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
+		contentType = "image/jpeg"
+	case strings.HasSuffix(lower, ".webp"):
+		contentType = "image/webp"
+	case strings.HasSuffix(lower, ".gif"):
+		contentType = "image/gif"
+	}
+
+	iconTTL := time.Hour
+	putURL, headers, err := s.store.PresignPut(ctx, objectKey, contentType, iconTTL)
+	if err != nil {
+		return nil, fmt.Errorf("presign put mcp icon: %w", err)
+	}
+	// Compute the persistent URL BEFORE the upload — the client will store
+	// this URL on the MCP record after successfully PUTting to putURL.
+	downloadURL, err := s.store.PublicURL(ctx, objectKey)
+	if err != nil {
+		return nil, fmt.Errorf("public url for mcp icon: %w", err)
+	}
+
+	headerMap := make(map[string]string)
+	for k, v := range headers {
+		if len(v) > 0 {
+			headerMap[k] = v[0]
+		}
+	}
+
+	return &IconUploadResult{
+		ObjectKey:    objectKey,
+		PresignedURL: putURL,
+		ExpiresIn:    int(iconTTL.Seconds()),
+		Method:       "PUT",
+		Headers:      headerMap,
+		DownloadURL:  downloadURL,
+	}, nil
 }

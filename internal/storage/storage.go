@@ -15,6 +15,13 @@ type Storage interface {
 	// PresignGet returns a public object URL when configured, otherwise a presigned GET URL.
 	PresignGet(ctx context.Context, key string, expires time.Duration) (url string, err error)
 
+	// PublicURL returns a non-expiring URL that clients can persist and
+	// reload later. Local driver: an unsigned path served by the local
+	// proxy; OSS driver: the object address on the public endpoint (bucket
+	// must be readable there). Distinct from PresignGet, which produces
+	// time-limited signed URLs unsuitable for storing in a DB column.
+	PublicURL(ctx context.Context, key string) (string, error)
+
 	// GetObject retrieves an object from storage.
 	GetObject(ctx context.Context, key string) (io.ReadCloser, error)
 
