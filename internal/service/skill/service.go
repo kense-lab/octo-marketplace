@@ -45,7 +45,7 @@ var ErrCategoryNotFound = errors.New("category not found")
 
 // SkillItem is the API-facing representation of a skill.
 type SkillItem struct {
-	ID            string          `json:"id"`
+	ID            string          `json:"skill_id"`
 	Name          string          `json:"name"`
 	DisplayName   string          `json:"display_name"`
 	IconURL       string          `json:"icon_url"`
@@ -506,7 +506,7 @@ func isURL(s string) bool {
 
 // VersionItem is the API-facing representation of a skill version.
 type VersionItem struct {
-	ID        string          `json:"id"`
+	ID        string          `json:"skill_version_id"`
 	SkillID   string          `json:"skill_id"`
 	Version   string          `json:"version"`
 	Changelog string          `json:"changelog"`
