@@ -14,6 +14,8 @@ func TestIsSecretKey(t *testing.T) {
 		"DB_PASSWORD", "MYSQL_PWD", "user_password", "passwd", "pass",
 		"passphrase", "Cookie", "credentials", "credential", "auth",
 		"x-auth", "bearer", "session", "sessionid", "PAT",
+		"jwt", "JWT", "DSN", "connection_string", "x_connection_string",
+		"access", "public_access",
 	}
 	for _, k := range secret {
 		if !isSecretKey(k) {
@@ -66,6 +68,9 @@ func TestRedactSecretsRejectsCommonCredentialAliases(t *testing.T) {
 		"Cookie":      "session=abc",
 		"credentials": "secret",
 		"PAT":         "ghp_xxx",
+		"dsn":         "mysql://user:pass@host/db",
+		"jwt":         "eyJhbGciOi...",
+		"access":      "opaque-secret",
 	}
 	_, leaks := redactSecrets(in, "env")
 	if len(leaks) != len(in) {

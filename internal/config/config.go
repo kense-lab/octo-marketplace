@@ -9,16 +9,17 @@ import (
 )
 
 type Config struct {
-	MySQLDSN          string
-	OctoAPIURL        string
-	APIPort           string
-	PublicBaseURL     string
-	AuthEnabled       bool
-	AuthCacheTTL      time.Duration
-	AuthCacheCapacity int
-	DevAuthUID        string
-	DevAuthName       string
-	DevSpaceID        string
+	MySQLDSN           string
+	OctoAPIURL         string
+	APIPort            string
+	PublicBaseURL      string
+	CORSAllowedOrigins []string
+	AuthEnabled        bool
+	AuthCacheTTL       time.Duration
+	AuthCacheCapacity  int
+	DevAuthUID         string
+	DevAuthName        string
+	DevSpaceID         string
 	// AdminToken is the shared secret octo-admin sends in X-Admin-Token to
 	// prove it may hit /api/v1/admin/*. Empty ⇒ admin routes are disabled in
 	// prod. In dev (AuthEnabled=false) admin routes are open regardless.
@@ -76,24 +77,25 @@ func (s StorageConfig) Enabled() bool {
 
 func Load() Config {
 	return Config{
-		MySQLDSN:          env("MYSQL_DSN", ""),
-		OctoAPIURL:        strings.TrimRight(env("OCTO_API_URL", ""), "/"),
-		APIPort:           env("API_PORT", "8092"),
-		PublicBaseURL:     strings.TrimRight(env("PUBLIC_BASE_URL", ""), "/"),
-		AuthEnabled:       envBool("AUTH_ENABLED", true),
-		AuthCacheTTL:      envDuration("AUTH_CACHE_TTL", 30*time.Second),
-		AuthCacheCapacity: envInt("AUTH_CACHE_CAPACITY", 10000),
-		DevAuthUID:        env("DEV_AUTH_UID", "dev-user"),
-		DevAuthName:       env("DEV_AUTH_NAME", "Developer"),
-		DevSpaceID:        env("DEV_SPACE_ID", "dev-space"),
-		AdminToken:        env("MARKETPLACE_ADMIN_TOKEN", ""),
-		AdminOwnerUID:     env("ADMIN_OWNER_UID", ""),
-		AdminOwnerName:    env("ADMIN_OWNER_NAME", ""),
-		ReadHeaderTimeout: envDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout:       envDuration("HTTP_READ_TIMEOUT", 15*time.Second),
-		WriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
-		IdleTimeout:       envDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
-		ProbeAllowPrivate: envBool("PROBE_ALLOW_PRIVATE", false),
+		MySQLDSN:           env("MYSQL_DSN", ""),
+		OctoAPIURL:         strings.TrimRight(env("OCTO_API_URL", ""), "/"),
+		APIPort:            env("API_PORT", "8092"),
+		PublicBaseURL:      strings.TrimRight(env("PUBLIC_BASE_URL", ""), "/"),
+		CORSAllowedOrigins: envCSV("CORS_ALLOWED_ORIGINS"),
+		AuthEnabled:        envBool("AUTH_ENABLED", true),
+		AuthCacheTTL:       envDuration("AUTH_CACHE_TTL", 30*time.Second),
+		AuthCacheCapacity:  envInt("AUTH_CACHE_CAPACITY", 10000),
+		DevAuthUID:         env("DEV_AUTH_UID", "dev-user"),
+		DevAuthName:        env("DEV_AUTH_NAME", "Developer"),
+		DevSpaceID:         env("DEV_SPACE_ID", "dev-space"),
+		AdminToken:         env("MARKETPLACE_ADMIN_TOKEN", ""),
+		AdminOwnerUID:      env("ADMIN_OWNER_UID", ""),
+		AdminOwnerName:     env("ADMIN_OWNER_NAME", ""),
+		ReadHeaderTimeout:  envDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:        envDuration("HTTP_READ_TIMEOUT", 15*time.Second),
+		WriteTimeout:       envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
+		IdleTimeout:        envDuration("HTTP_IDLE_TIMEOUT", 60*time.Second),
+		ProbeAllowPrivate:  envBool("PROBE_ALLOW_PRIVATE", false),
 		Storage: StorageConfig{
 			Endpoint:      strings.TrimRight(env("STORAGE_ENDPOINT", ""), "/"),
 			Region:        env("STORAGE_REGION", "us-east-1"),
@@ -197,4 +199,24 @@ func envInt(key string, fallback int) int {
 		return fallback
 	}
 	return parsed
+}
+
+func envCSV(key string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

@@ -28,20 +28,21 @@ type Pinger interface {
 
 // StorageConfig holds configuration for the skill archive storage layer.
 type StorageConfig struct {
-	Driver            string // "local" or "oss"
-	LocalDir          string
-	BaseURL           string
-	MaxMB             int
-	OSSEndpoint       string
-	OSSBucket         string
-	OSSAccessKey      string
-	OSSSecretKey      string
-	OSSRegion         string
-	OSSKeyPrefix      string
-	OSSPathStyle      bool
-	OSSPublicEndpoint string
-	OSSSigningHost    string
-	OSSDownloadSigned bool
+	Driver             string // "local" or "oss"
+	LocalDir           string
+	BaseURL            string
+	MaxMB              int
+	OSSEndpoint        string
+	OSSBucket          string
+	OSSAccessKey       string
+	OSSSecretKey       string
+	OSSRegion          string
+	OSSKeyPrefix       string
+	OSSPathStyle       bool
+	OSSPublicEndpoint  string
+	OSSSigningHost     string
+	OSSDownloadSigned  bool
+	CORSAllowedOrigins []string
 }
 
 func Public(database Pinger, authenticator *marketmiddleware.Authenticator, adminAuth *marketmiddleware.AdminAuthenticator, storageCfg StorageConfig, mcp *handler.MCP, adminMCP *handler.AdminMCP) *gin.Engine {
@@ -50,7 +51,7 @@ func Public(database Pinger, authenticator *marketmiddleware.Authenticator, admi
 
 func publicWithOptions(database Pinger, authenticator *marketmiddleware.Authenticator, adminAuth *marketmiddleware.AdminAuthenticator, storageCfg StorageConfig, mcp *handler.MCP, adminMCP *handler.AdminMCP, authEnabled bool) *gin.Engine {
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), corsMiddleware())
+	r.Use(gin.Logger(), gin.Recovery(), corsMiddleware(storageCfg.CORSAllowedOrigins))
 
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -198,11 +199,23 @@ func deprecatedRoute(successor string) gin.HandlerFunc {
 	}
 }
 
-func corsMiddleware() gin.HandlerFunc {
+func corsMiddleware(allowedOrigins []string) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		if origin == "" {
+			continue
+		}
+		allowed[origin] = struct{}{}
+	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Content-Type,Authorization,Token,X-Space-Id,X-Admin-Token,X-Request-Id")
+		if origin := c.GetHeader("Origin"); origin != "" {
+			if _, ok := allowed[origin]; ok {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Vary", "Origin")
+			}
+		}
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return

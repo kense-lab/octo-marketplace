@@ -25,6 +25,20 @@ func TestPublicBaseURLTrimsTrailingSlash(t *testing.T) {
 	}
 }
 
+func TestCORSAllowedOriginsFromEnv(t *testing.T) {
+	t.Setenv("CORS_ALLOWED_ORIGINS", " https://octo.example.com , ,https://admin.octo.example.com/ ")
+	got := Load().CORSAllowedOrigins
+	want := []string{"https://octo.example.com", "https://admin.octo.example.com/"}
+	if len(got) != len(want) {
+		t.Fatalf("CORSAllowedOrigins=%q want=%q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("CORSAllowedOrigins[%d]=%q want=%q", i, got[i], want[i])
+		}
+	}
+}
+
 func TestValidateAPI(t *testing.T) {
 	tests := []struct {
 		name    string

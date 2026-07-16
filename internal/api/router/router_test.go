@@ -252,6 +252,39 @@ func TestProbeRouteStdioRejected(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsConfiguredOriginOnly(t *testing.T) {
+	cfg := testStorageConfig()
+	cfg.CORSAllowedOrigins = []string{"https://octo.example.com"}
+	engine := Public(stubPinger{}, testAuthenticator(), testAdminAuthenticator(), cfg, testHandler(), testAdminHandler())
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Origin", "https://octo.example.com")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "https://octo.example.com" {
+		t.Fatalf("Allow-Origin=%q want configured origin", got)
+	}
+	if got := recorder.Header().Get("Vary"); got != "Origin" {
+		t.Fatalf("Vary=%q want Origin", got)
+	}
+}
+
+func TestCORSRejectsUnconfiguredOrigin(t *testing.T) {
+	cfg := testStorageConfig()
+	cfg.CORSAllowedOrigins = []string{"https://octo.example.com"}
+	engine := Public(stubPinger{}, testAuthenticator(), testAdminAuthenticator(), cfg, testHandler(), testAdminHandler())
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	recorder := httptest.NewRecorder()
+	engine.ServeHTTP(recorder, req)
+
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("Allow-Origin=%q want empty", got)
+	}
+}
+
 // ─── Admin surface (docs/api/mcp-v1.md §9) ─────────────────────────────────
 
 // reachedAdminService lets a router test assert the admin handler was

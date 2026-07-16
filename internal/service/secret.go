@@ -11,7 +11,7 @@ import (
 // secretKeyPattern matches token-like keys (doc §5.1). It intentionally covers
 // common password/session/auth credential names so write-time redaction is not
 // bypassed by alternate key names.
-var secretKeyPattern = regexp.MustCompile(`(?i)^(authorization|.*authorization|token|.*token|.*key|.*secret|password|.*password|pwd|.*pwd|passwd|pass|passphrase|api[-_]?key|pat|cookie|.*cookie|credential|credentials|.*credential|auth|.*auth|bearer|.*bearer|session|.*session|sessionid)$`)
+var secretKeyPattern = regexp.MustCompile(`(?i)^(authorization|.*authorization|token|.*token|.*key|.*secret|password|.*password|pwd|.*pwd|passwd|pass|passphrase|api[-_]?key|pat|cookie|.*cookie|credential|credentials|.*credential|auth|.*auth|bearer|.*bearer|session|.*session|sessionid|jwt|.*jwt|dsn|.*dsn|connection[-_]?string|.*connection[-_]?string|access|.*access)$`)
 
 // isSecretKey reports whether k names a token-like field.
 func isSecretKey(k string) bool {
