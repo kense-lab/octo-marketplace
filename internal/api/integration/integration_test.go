@@ -622,14 +622,14 @@ func TestDownloadSkillJSON(t *testing.T) {
 			"", "file.zip", fileKey, int64(1024), "sha", now, now,
 		))
 
-	w := doRequest(engine, "GET", "/api/v1/skill/skill-dl-json/download?format=json", nil)
+	w := doRequest(engine, "GET", "/api/v1/skills/skill-dl-json/download?format=json", nil)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
 	}
 	body := parseBody(t, w)
 	data, ok := body["data"].(map[string]interface{})
-	if !ok || data["download_url"] == "" {
-		t.Fatalf("missing download URL: %v", body)
+	if !ok || data["download_url"] == "" || data["file_sha256"] != "sha" {
+		t.Fatalf("missing download metadata: %v", body)
 	}
 }
 

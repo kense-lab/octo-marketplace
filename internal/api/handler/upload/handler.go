@@ -329,6 +329,12 @@ func (h *Handler) InitReupload(c *gin.Context) {
 	apiresponse.OK(c, result)
 }
 
+// DownloadResponse contains the authorized artifact URL and integrity digest.
+type DownloadResponse struct {
+	DownloadURL string `json:"download_url"`
+	FileSHA256  string `json:"file_sha256"`
+}
+
 // Download godoc
 // @Summary Download Skill archive
 // @Description Authorize access and redirect to the artifact URL, or return it when format=json.
@@ -339,7 +345,7 @@ func (h *Handler) InitReupload(c *gin.Context) {
 // @Security Bearer
 // @Param skill_id path string true "Skill ID"
 // @Param format query string false "Use json to return the download URL"
-// @Success 200 {object} apiresponse.Data[map[string]string]
+// @Success 200 {object} apiresponse.Data[DownloadResponse]
 // @Success 302 "Redirect to artifact"
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
 // @Failure 403 {object} apiresponse.Error "FORBIDDEN"
@@ -376,7 +382,7 @@ func (h *Handler) Download(c *gin.Context) {
 		return
 	}
 	if c.Query("format") == "json" {
-		apiresponse.OK(c, gin.H{"download_url": downloadURL})
+		apiresponse.OK(c, DownloadResponse{DownloadURL: downloadURL, FileSHA256: skill.FileSHA256})
 		return
 	}
 

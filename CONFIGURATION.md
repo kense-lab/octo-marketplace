@@ -10,7 +10,7 @@ Environment variables configure the API service.
 | `API_PORT` | no | `8092` | HTTP listen port |
 | `PUBLIC_BASE_URL` | no | `http://127.0.0.1:<API_PORT>` | External Marketplace URL used for local-storage redirects; may include a gateway prefix |
 | `OCTO_API_URL` | when auth enabled | empty | `octo-server` API base URL |
-| `AUTH_ENABLED` | no | `false` | Enable Octo token and Space verification |
+| `AUTH_ENABLED` | no | `true` | Enable Octo token and Space verification; disable explicitly only for local development |
 | `AUTH_CACHE_TTL` | no | `30s` | Successful identity cache duration |
 | `AUTH_CACHE_CAPACITY` | no | `10000` | Maximum cached identities |
 | `DEV_AUTH_UID` | no | `dev-user` | Local identity when auth is disabled |
@@ -69,9 +69,9 @@ provide rotated credentials through deployment-managed secrets.
 
 ## Authentication modes
 
-Authentication is disabled by default so the service can run locally without
-`octo-server`. In this mode, protected routes receive the configured development
-identity and Space.
+Authentication is enabled by default and fails closed unless `OCTO_API_URL` is
+configured. Local development must explicitly disable it; in this mode,
+protected routes receive the configured development identity and Space.
 
 ```bash
 AUTH_ENABLED=false

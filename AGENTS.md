@@ -94,8 +94,9 @@ Do not place business logic directly in `cmd/` or HTTP handlers.
 Health endpoints are intentionally unauthenticated. Future business endpoints
 must authenticate through Octo and enforce scope access server-side.
 
-Authentication is controlled by `AUTH_ENABLED` and defaults to `false` for
-standalone development. Disabled mode injects `DEV_AUTH_UID`, `DEV_AUTH_NAME`,
+Authentication is controlled by `AUTH_ENABLED` and defaults to `true` so a
+missing production setting fails closed. Standalone development explicitly
+disables it. Disabled mode injects `DEV_AUTH_UID`, `DEV_AUTH_NAME`,
 and `DEV_SPACE_ID`. Production deployments must enable authentication. Enabled
 mode calls `/v1/auth/verify?include=context` and fails closed unless the response
 contains authoritative Space context.

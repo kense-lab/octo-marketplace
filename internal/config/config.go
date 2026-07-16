@@ -80,7 +80,7 @@ func Load() Config {
 		OctoAPIURL:        strings.TrimRight(env("OCTO_API_URL", ""), "/"),
 		APIPort:           env("API_PORT", "8092"),
 		PublicBaseURL:     strings.TrimRight(env("PUBLIC_BASE_URL", ""), "/"),
-		AuthEnabled:       envBool("AUTH_ENABLED", false),
+		AuthEnabled:       envBool("AUTH_ENABLED", true),
 		AuthCacheTTL:      envDuration("AUTH_CACHE_TTL", 30*time.Second),
 		AuthCacheCapacity: envInt("AUTH_CACHE_CAPACITY", 10000),
 		DevAuthUID:        env("DEV_AUTH_UID", "dev-user"),

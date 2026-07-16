@@ -83,6 +83,11 @@ components:
         data:
           $ref: '#/components/schemas/internal_api_handler_skill.SkillVersionList'
       type: object
+    github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Data-internal_api_handler_upload_DownloadResponse:
+      properties:
+        data:
+          $ref: '#/components/schemas/internal_api_handler_upload.DownloadResponse'
+      type: object
     github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Data-map_string_string:
       properties:
         data:
@@ -710,6 +715,13 @@ components:
         version:
           type: string
         visibility:
+          type: string
+      type: object
+    internal_api_handler_upload.DownloadResponse:
+      properties:
+        download_url:
+          type: string
+        file_sha256:
           type: string
       type: object
     internal_api_handler_upload.IconUploadRequest:
@@ -2525,7 +2537,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Data-map_string_string'
+                $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Data-internal_api_handler_upload_DownloadResponse'
           description: OK
         "302":
           description: Redirect to artifact

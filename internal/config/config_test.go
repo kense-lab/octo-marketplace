@@ -52,10 +52,10 @@ func TestInvalidDurationFallsBack(t *testing.T) {
 	}
 }
 
-func TestAuthDisabledByDefault(t *testing.T) {
+func TestAuthEnabledByDefault(t *testing.T) {
 	t.Setenv("AUTH_ENABLED", "")
-	if Load().AuthEnabled {
-		t.Fatal("AuthEnabled=true want=false")
+	if !Load().AuthEnabled {
+		t.Fatal("AuthEnabled=false want=true")
 	}
 }
 

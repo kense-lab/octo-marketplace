@@ -37,9 +37,9 @@ See [`CONFIGURATION.md`](CONFIGURATION.md) for environment variables. The API
 runs embedded SQL migrations at startup; set `SKIP_MIGRATION=true` only when
 migrations are managed externally.
 
-Authentication is disabled by default for standalone development. The sample
-protected endpoint is available at `/api/v1/session`. Set `AUTH_ENABLED=true`
-and `OCTO_API_URL` to enable Octo token and Space verification.
+Authentication is enabled by default and fails closed. The sample development
+configuration explicitly disables it; the protected endpoint is available at
+`/api/v1/session`. Configure `OCTO_API_URL` for Octo token and Space verification.
 
 The API listens on port `8092`. Docker Compose exposes MySQL on local port
 `3306`.
