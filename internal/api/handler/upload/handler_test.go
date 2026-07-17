@@ -37,6 +37,7 @@ func TestLocalUploadProxy(t *testing.T) {
 
 	body := "zip file content"
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/_storage/upload/skills/abc/test.zip", strings.NewReader(body))
+	req.RemoteAddr = "127.0.0.1:12345"
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -80,6 +81,7 @@ func TestLocalUploadProxyRejectsOversizedBody(t *testing.T) {
 
 	body := strings.NewReader(strings.Repeat("x", 1024*1024+1))
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/_storage/upload/skills/abc/large.zip", body)
+	req.RemoteAddr = "127.0.0.1:12345"
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusRequestEntityTooLarge {
@@ -96,6 +98,7 @@ func TestLocalDownloadProxy(t *testing.T) {
 	_ = ls.WriteObject("skills/xyz/dl.zip", strings.NewReader("download content"))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/_storage/download/skills/xyz/dl.zip", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
@@ -113,11 +116,26 @@ func TestLocalDownloadProxy_NotFound(t *testing.T) {
 	r, _ := testRouter(ls)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/_storage/download/skills/missing/file.zip", nil)
+	req.RemoteAddr = "127.0.0.1:12345"
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusNotFound)
+	}
+}
+
+func TestLocalProxyRejectsRemoteClient(t *testing.T) {
+	tmpDir := t.TempDir()
+	ls := storage.NewLocal(tmpDir, "http://localhost:8092")
+	r, _ := testRouter(ls)
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/_storage/upload/skills/abc/test.zip", strings.NewReader("data"))
+	req.RemoteAddr = "192.0.2.10:12345"
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
 	}
 }
 

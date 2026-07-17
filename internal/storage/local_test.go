@@ -153,3 +153,43 @@ func TestLocalStorage_PathTraversal(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalStorage_RejectsSymlinkEscape(t *testing.T) {
+	tmpDir := t.TempDir()
+	outside := t.TempDir()
+	ls := NewLocal(tmpDir, "http://localhost:8092")
+
+	if err := os.MkdirAll(filepath.Join(tmpDir, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(tmpDir, "skills", "escape")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ls.WriteObject("skills/escape/pwned", strings.NewReader("bad")); err == nil {
+		t.Fatal("expected symlinked parent write to be rejected")
+	}
+	if _, err := ls.GetObject(context.Background(), "skills/escape/pwned"); err == nil {
+		t.Fatal("expected symlinked parent read to be rejected")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "pwned")); !os.IsNotExist(err) {
+		t.Fatalf("outside file unexpectedly created: %v", err)
+	}
+}
+
+func TestLocalStorage_WriteFailureRemovesPartialFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	ls := NewLocal(tmpDir, "http://localhost:8092")
+	key := "skills/abc/partial.zip"
+	errReader := io.MultiReader(strings.NewReader("partial"), failingReader{})
+	if err := ls.WriteObject(key, errReader); err == nil {
+		t.Fatal("expected write failure")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, key)); !os.IsNotExist(err) {
+		t.Fatalf("partial destination remains: %v", err)
+	}
+}
+
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }

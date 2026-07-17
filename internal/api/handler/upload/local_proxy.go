@@ -3,6 +3,7 @@ package upload
 import (
 	"errors"
 	"io"
+	"net"
 	"net/http"
 
 	"github.com/Mininglamp-OSS/octo-marketplace/internal/api/errcode"
@@ -12,6 +13,16 @@ import (
 
 // Local storage proxy endpoints are development-only transport plumbing and
 // intentionally excluded from the public Marketplace OpenAPI contract.
+func localProxyLoopbackOnly(c *gin.Context) {
+	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err != nil || !net.ParseIP(host).IsLoopback() {
+		apiresponse.Fail(c, http.StatusForbidden, errcode.PermissionDenied, "local storage proxy is only available from localhost", nil, "")
+		c.Abort()
+		return
+	}
+	c.Next()
+}
+
 func (h *Handler) localUploadProxy(c *gin.Context) {
 	key := localObjectKey(c.Param("key"))
 	maxBytes := int64(h.maxUploadMB) * 1024 * 1024

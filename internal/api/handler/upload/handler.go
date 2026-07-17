@@ -68,8 +68,8 @@ func (h *Handler) RegisterLocalProxy(r *gin.Engine, authEnabled ...bool) {
 	if h.localStorage == nil || (len(authEnabled) > 0 && authEnabled[0]) {
 		return
 	}
-	r.PUT("/api/v1/_storage/upload/*key", h.localUploadProxy)
-	r.GET("/api/v1/_storage/download/*key", h.localDownloadProxy)
+	r.PUT("/api/v1/_storage/upload/*key", localProxyLoopbackOnly, h.localUploadProxy)
+	r.GET("/api/v1/_storage/download/*key", localProxyLoopbackOnly, h.localDownloadProxy)
 }
 
 // initRequest is the JSON body for POST /api/v1/skill/upload/init.

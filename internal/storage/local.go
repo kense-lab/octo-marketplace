@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // LocalStorage implements Storage using the local filesystem.
@@ -25,7 +27,8 @@ func NewLocal(baseDir, baseURL string) *LocalStorage {
 }
 
 // safePath validates and resolves a key to a safe absolute path within baseDir.
-// It rejects absolute paths, dot-dot segments, and any key that would escape baseDir.
+// Existing path components are evaluated through symlinks so a link inside the
+// storage tree cannot redirect an operation outside the configured root.
 func (s *LocalStorage) safePath(key string) (string, error) {
 	// Reject absolute paths
 	if filepath.IsAbs(key) {
@@ -35,16 +38,63 @@ func (s *LocalStorage) safePath(key string) (string, error) {
 	if strings.Contains(key, "..") {
 		return "", fmt.Errorf("path traversal not allowed: %s", key)
 	}
-	// Clean and join
+	if err := os.MkdirAll(s.baseDir, 0o755); err != nil {
+		return "", fmt.Errorf("local storage: mkdir base: %w", err)
+	}
+
 	cleaned := filepath.Clean(key)
-	full := filepath.Join(s.baseDir, cleaned)
-	// Final check: resolved path must be under baseDir
-	absBase, _ := filepath.Abs(s.baseDir)
-	absFull, _ := filepath.Abs(full)
-	if !strings.HasPrefix(absFull, absBase+string(filepath.Separator)) && absFull != absBase {
+	absBase, err := filepath.Abs(s.baseDir)
+	if err != nil {
+		return "", fmt.Errorf("local storage: resolve base: %w", err)
+	}
+	realBase, err := filepath.EvalSymlinks(absBase)
+	if err != nil {
+		return "", fmt.Errorf("local storage: evaluate base: %w", err)
+	}
+	absFull := filepath.Join(absBase, cleaned)
+	realFull, err := resolveExistingPath(absFull)
+	if err != nil {
+		return "", err
+	}
+	if !pathWithin(realBase, realFull) {
 		return "", fmt.Errorf("path escapes base directory: %s", key)
 	}
-	return full, nil
+	return realFull, nil
+}
+
+// resolveExistingPath evaluates the nearest existing ancestor and appends any
+// not-yet-created suffix. This catches symlinked directories for both reads and
+// new writes.
+func resolveExistingPath(path string) (string, error) {
+	candidate := path
+	var missing []string
+	for {
+		_, err := os.Lstat(candidate)
+		if err == nil {
+			resolved, err := filepath.EvalSymlinks(candidate)
+			if err != nil {
+				return "", fmt.Errorf("local storage: evaluate path: %w", err)
+			}
+			for i := len(missing) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, missing[i])
+			}
+			return resolved, nil
+		}
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("local storage: inspect path: %w", err)
+		}
+		parent := filepath.Dir(candidate)
+		if parent == candidate {
+			return "", fmt.Errorf("local storage: no existing path ancestor")
+		}
+		missing = append(missing, filepath.Base(candidate))
+		candidate = parent
+	}
+}
+
+func pathWithin(base, target string) bool {
+	rel, err := filepath.Rel(base, target)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // PresignPut returns a URL to which the client can PUT a file.
@@ -96,7 +146,7 @@ func (s *LocalStorage) GetObject(_ context.Context, key string) (io.ReadCloser, 
 	if err != nil {
 		return nil, err
 	}
-	f, err := os.Open(full)
+	f, err := os.OpenFile(full, os.O_RDONLY|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, fmt.Errorf("local storage: open: %w", err)
 	}
@@ -117,7 +167,7 @@ func (s *LocalStorage) DeleteObject(_ context.Context, key string) error {
 }
 
 // WriteObject writes data to the local filesystem (used by the local upload proxy).
-func (s *LocalStorage) WriteObject(key string, r io.Reader) error {
+func (s *LocalStorage) WriteObject(key string, r io.Reader) (retErr error) {
 	full, err := s.safePath(key)
 	if err != nil {
 		return err
@@ -125,13 +175,31 @@ func (s *LocalStorage) WriteObject(key string, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return fmt.Errorf("local storage: mkdir: %w", err)
 	}
-	f, err := os.Create(full)
+	parent := filepath.Dir(full)
+	f, err := os.CreateTemp(parent, ".upload-*")
 	if err != nil {
-		return fmt.Errorf("local storage: create: %w", err)
+		return fmt.Errorf("local storage: create temp: %w", err)
 	}
-	defer f.Close()
+	tmpName := f.Name()
+	defer func() {
+		_ = f.Close()
+		if retErr != nil {
+			_ = os.Remove(tmpName)
+		}
+	}()
 	if _, err := io.Copy(f, r); err != nil {
 		return fmt.Errorf("local storage: write: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("local storage: close: %w", err)
+	}
+	// Re-check the destination after the write window before the atomic move.
+	checked, err := s.safePath(key)
+	if err != nil || checked != full {
+		return fmt.Errorf("local storage: destination changed during upload")
+	}
+	if err := os.Rename(tmpName, full); err != nil {
+		return fmt.Errorf("local storage: commit upload: %w", err)
 	}
 	return nil
 }
@@ -146,7 +214,7 @@ func (s *LocalStorage) CopyObject(_ context.Context, srcKey, dstKey string) erro
 	if err != nil {
 		return err
 	}
-	src, err := os.Open(srcFull)
+	src, err := os.OpenFile(srcFull, os.O_RDONLY|unix.O_NOFOLLOW, 0)
 	if err != nil {
 		return fmt.Errorf("local storage: copy open src: %w", err)
 	}
@@ -155,13 +223,31 @@ func (s *LocalStorage) CopyObject(_ context.Context, srcKey, dstKey string) erro
 	if err := os.MkdirAll(filepath.Dir(dstFull), 0o755); err != nil {
 		return fmt.Errorf("local storage: copy mkdir: %w", err)
 	}
-	dst, err := os.Create(dstFull)
+	dst, err := os.CreateTemp(filepath.Dir(dstFull), ".copy-*")
 	if err != nil {
-		return fmt.Errorf("local storage: copy create dst: %w", err)
+		return fmt.Errorf("local storage: copy create temp: %w", err)
 	}
-	defer dst.Close()
+	tmpName := dst.Name()
+	committed := false
+	defer func() {
+		_ = dst.Close()
+		if !committed {
+			_ = os.Remove(tmpName)
+		}
+	}()
 	if _, err := io.Copy(dst, src); err != nil {
 		return fmt.Errorf("local storage: copy: %w", err)
 	}
+	if err := dst.Close(); err != nil {
+		return fmt.Errorf("local storage: copy close: %w", err)
+	}
+	checked, err := s.safePath(dstKey)
+	if err != nil || checked != dstFull {
+		return fmt.Errorf("local storage: copy destination changed")
+	}
+	if err := os.Rename(tmpName, dstFull); err != nil {
+		return fmt.Errorf("local storage: copy commit: %w", err)
+	}
+	committed = true
 	return nil
 }
