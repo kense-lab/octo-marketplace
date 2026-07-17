@@ -29,10 +29,10 @@ server are silently ignored by the frontend today. The following extras are
 intentional and the frontend is expected to add them to its TS types when it
 begins to consume them:
 
-- `McpListItem` on the wire carries `visibility` and `creatorName`; TS
+- `McpListItem` on the wire carries `visibility` and `creator_name`; TS
   today does not. List-card UI should promote at least `visibility` to a
   card badge in the next frontend pass.
-- `McpDetail` on the wire carries `createdAt` and `updatedAt`; TS today
+- `McpDetail` on the wire carries `created_at` and `updated_at`; TS today
   does not.
 
 The doc uses "superset" and never claims 1:1 type match.
@@ -95,76 +95,76 @@ Every non-2xx response uses the standard OCTO OpenAPI error shape:
 
 ### 3.1 `McpDetail`
 
-The full record returned by `GET /mcps/{id}`, `POST /mcps`, `PATCH /mcps/{id}`.
+The full record returned by `GET /mcps/{mcp_id}`, `POST /mcps`, `PATCH /mcps/{mcp_id}`.
 Field names match the `octo-web` `dmworkmcp` package where the type overlaps;
-`createdAt` / `updatedAt` are wire-only extras (see §0).
+`created_at` / `updated_at` are wire-only extras (see §0).
 
 ```json
 {
-  "id": "01HK7Z3B9YV0K5H0KR6QF8N4M2",
+  "mcp_id": "01HK7Z3B9YV0K5H0KR6QF8N4M2",
   "name": "GitHub MCP",
   "slogan": "读写仓库、Issue、PR",
   "category": "dev",
   "icon": "🐙",
   "tags": ["官方", "热门"],
-  "toolCount": 8,
+  "tool_count": 8,
   "visibility": "public",
-  "creatorName": "GitHub Bot",
-  "quickStart": {
+  "creator_name": "GitHub Bot",
+  "quick_start": {
     "transport": "streamable-http",
-    "serverName": "GitHub MCP",
+    "server_name": "GitHub MCP",
     "slug": "github-mcp",
     "url": "https://mcp.deepminer.com.cn/github/mcp",
-    "authType": "bearer",
+    "auth_type": "bearer",
     "headers": { "X-Trace-Origin": "octo-web" }
   },
   "tools": [
     { "name": "list_repositories", "description": "列出仓库" }
   ],
-  "usageExamples": ["帮我在 octo-web 仓库里创建一个 Issue"],
+  "usage_examples": ["帮我在 octo-web 仓库里创建一个 Issue"],
   "faqs": [
     { "question": "需要哪些权限？", "answer": "至少需要 repo" }
   ],
   "notes": ["Token 请使用最小必要权限"],
-  "createdAt": "2026-07-14T10:15:00.000+08:00",
-  "updatedAt": "2026-07-14T10:15:00.000+08:00"
+  "created_at": "2026-07-14T10:15:00.000+08:00",
+  "updated_at": "2026-07-14T10:15:00.000+08:00"
 }
 ```
 
 Field notes:
 
-- `id`: server-generated, ULID-style opaque 26-char string. Clients treat
+- `mcp_id`: server-generated, ULID-style opaque 26-char string. Clients treat
   it as opaque; never derive it from `name`.
 - `icon`: emoji, short label, or a `data:` / `https://` image URL. No
   length limit at the API layer; the schema caps `MEDIUMTEXT`.
 - `tags`: string array; entries de-duplicated and trimmed server-side.
-- `toolCount`: derived from `tools.length`; always echoed for card display.
+- `tool_count`: derived from `tools.length`; always echoed for card display.
 - `visibility`: one of `public` / `private` / `system`. `system` never
   appears in a client-write; it appears in reads for platform-provided
   records.
-- `creatorName`: snapshot of the owner's `Identity.name` at create time.
+- `creator_name`: snapshot of the owner's `Identity.name` at create time.
   Not updated when the underlying user renames themselves.
-- `quickStart.serverName`: defaults to `name`; not a separate user input.
+- `quick_start.server_name`: defaults to `name`; not a separate user input.
   See §3.3 for the full mapping. Used inside prompt-tab template copy
   (human-readable).
-- `quickStart.slug`: the ASCII identifier used as the JSON KEY in
+- `quick_start.slug`: the ASCII identifier used as the JSON KEY in
   generated `mcpServers` snippets. Sent by the client at the top level of
   the create/patch body (§3.3); auto-derived by the server from `name`
   (lower-case, `[a-z0-9]` runs joined by `-`, hyphens trimmed, ≤ 64
   chars) when the client omits it. Reserved shape: `^[a-z0-9-]{1,64}$`.
   Unique per Space among live rows (mig 03) — a collision yields
   `err.marketplace.mcp.slug_taken`. Malformed or empty-after-slugify
-  yields `err.marketplace.mcp.slug_invalid` (§2). Slug and `serverName`
-  are distinct fields on purpose: `serverName` is the display label in
+  yields `err.marketplace.mcp.slug_invalid` (§2). Slug and `server_name`
+  are distinct fields on purpose: `server_name` is the display label in
   prompts, `slug` is the JSON key — separating them lets a Chinese
   display name coexist with an ASCII config key.
-- `quickStart.headers` / `quickStart.env`: values for keys matching
+- `quick_start.headers` / `quick_start.env`: values for keys matching
   `(?i)token|key|secret|password|pwd|auth` are always empty in responses
   (see §5 Secret redaction).
-- `usageExamples` / `notes`: string arrays. Empty entries filtered out.
+- `usage_examples` / `notes`: string arrays. Empty entries filtered out.
 - `faqs`: array of `{question, answer}`; entries with an empty question are
   filtered out.
-- `createdAt` / `updatedAt`: RFC 3339 with millisecond precision, in the
+- `created_at` / `updated_at`: RFC 3339 with millisecond precision, in the
   server's local timezone.
 
 ### 3.2 `McpListItem`
@@ -174,50 +174,51 @@ superset of the frontend TS type (§0):
 
 ```json
 {
-  "id": "01HK7Z3B9YV0K5H0KR6QF8N4M2",
+  "mcp_id": "01HK7Z3B9YV0K5H0KR6QF8N4M2",
   "name": "GitHub MCP",
   "slogan": "...",
   "category": "dev",
   "icon": "🐙",
   "tags": ["官方", "热门"],
-  "toolCount": 8,
+  "tool_count": 8,
   "visibility": "public",
-  "creatorName": "GitHub Bot"
+  "creator_name": "GitHub Bot"
 }
 ```
 
 ### 3.3 Field mapping: flat create body → nested detail response
 
 Create/update requests are FLAT (mirrors the frontend `CreateMcpParams`
-shape). Read responses NEST the connection under `quickStart{}`. The
+shape). Read responses NEST the connection under `quick_start{}`. The
 mapping is fixed here so both sides implement one translation, not two:
 
 | Flat field on write | Nested field on read | Notes |
 | --- | --- | --- |
-| `transport` | `quickStart.transport` | Verbatim. |
-| `url` | `quickStart.url` | Empty string collapses to omitted in response. |
-| `command` | `quickStart.command` | stdio only. |
-| `args` | `quickStart.args` | Array. Empty array collapses to omitted. |
-| `env` | `quickStart.env` | Record. Empty record collapses to omitted. |
-| `headers` | `quickStart.headers` | Record. Empty record collapses to omitted. Secret-key values are stripped (§5). |
-| `authType` | `quickStart.authType` | Default `"none"`. |
-| `slug` | `quickStart.slug` | Client sends flat; server echoes nested. Auto-derived from `name` when omitted. See field notes above. |
-| *server-derived* | `quickStart.serverName` | Server sets to `name.trim()`. Not accepted from client. |
+| `transport` | `quick_start.transport` | Verbatim. |
+| `url` | `quick_start.url` | Empty string collapses to omitted in response. |
+| `command` | `quick_start.command` | stdio only. |
+| `args` | `quick_start.args` | Array. Empty array collapses to omitted. |
+| `env` | `quick_start.env` | Record. Empty record collapses to omitted. |
+| `headers` | `quick_start.headers` | Record. Empty record collapses to omitted. Secret-key values are stripped (§5). |
+| `auth_type` | `quick_start.auth_type` | Default `"none"`. |
+| `slug` | `quick_start.slug` | Client sends flat; server echoes nested. Auto-derived from `name` when omitted. See field notes above. |
+| *server-derived* | `quick_start.server_name` | Server sets to `name.trim()`. Not accepted from client. |
 
 Top-level fields (`name`, `slug`, `slogan`, `category`, `icon`, `tags`,
-`tools`, `usageExamples`, `faqs`, `notes`, `visibility`) round-trip 1:1
+`tools`, `usage_examples`, `faqs`, `notes`, `visibility`) round-trip 1:1
 between write and read shapes.
 
 Fields set by the server, never by the client:
-`id`, `owner_uid` (server-only, never surfaced), `creatorName`, `toolCount`,
-`createdAt`, `updatedAt`, `quickStart.serverName`. Client-supplied values
-for these are silently ignored (not rejected — old clients keep working).
+`mcp_id`, `owner_uid` (server-only, never surfaced), `creator_name`, `tool_count`,
+`created_at`, `updated_at`, `quick_start.server_name`. Request bodies are
+strict: client-supplied server fields or any other unknown field are rejected
+with `VALIDATION_ERROR`.
 
 Auth-related fields never on the wire:
 `config.headers.Authorization` is stripped on write and never returned.
 The frontend re-generates the `Authorization: Bearer <sentinel>` line
 locally when it renders the JSON quick-start snippet, purely from the
-`authType` marker.
+`auth_type` marker.
 
 ## 4. Endpoints
 
@@ -236,7 +237,7 @@ Publish a new MCP owned by the caller.
   "tags": ["个人"],
   "transport": "streamable-http",
   "url": "https://mcp.example.com/github",
-  "authType": "bearer",
+  "auth_type": "bearer",
   "headers": { "X-Trace": "web" },
   "command": null,
   "args": [],
@@ -244,7 +245,7 @@ Publish a new MCP owned by the caller.
   "tools": [
     { "name": "create_issue", "description": "创建 Issue" }
   ],
-  "usageExamples": ["帮我建 Issue"],
+  "usage_examples": ["帮我建 Issue"],
   "faqs": [],
   "notes": [],
   "visibility": "public"
@@ -255,11 +256,11 @@ Publish a new MCP owned by the caller.
 - `transport` decides which of `url` / `command`+`args`+`env` is meaningful.
 - `visibility` accepts only `public` or `private`. Any other value —
   including `system` — yields `err.marketplace.mcp.invalid_visibility`.
-- Client-supplied `id`, `owner_uid`, `space_id`, `creator_name`,
-  `createdAt`, `updatedAt`, `toolCount` are silently ignored (§3.3).
+- Client-supplied `mcp_id`, `owner_uid`, `space_id`, `creator_name`,
+  `created_at`, `updated_at`, `tool_count` are rejected as unknown fields (§3.3).
 
 **Response (201):** the full `McpDetail` for the newly created record —
-same shape as `GET /mcps/{id}`. Frontend picks up `id` from the response.
+same shape as `GET /mcps/{mcp_id}`. Frontend picks up `mcp_id` from the response.
 
 **Errors:**
 - 400 `err.marketplace.mcp.invalid_request` /
@@ -333,7 +334,7 @@ filesort — acceptable at v1 scale).
 
 **Errors:** 401 / 403.
 
-### 4.4 `GET /mcps/{id}` — detail
+### 4.4 `GET /mcps/{mcp_id}` — detail
 
 Returns a single `McpDetail` if visible to the caller:
 
@@ -346,20 +347,19 @@ Otherwise the response is `404 err.marketplace.mcp.not_found` — never
 
 **Errors:** 401 / 403 (auth) / 404.
 
-### 4.5 `PATCH /mcps/{id}` — update
+### 4.5 `PATCH /mcps/{mcp_id}` — update
 
 Partial update. Only the record's owner may call this endpoint; anyone
 else receives `err.marketplace.mcp.forbidden`.
 
 **Mutable fields:** `name`, `slug`, `slogan`, `category`, `icon`, `tags`,
-`transport`, `url`, `command`, `args`, `env`, `headers`, `authType`,
-`tools`, `usageExamples`, `faqs`, `notes`, `visibility` (`public` /
+`transport`, `url`, `command`, `args`, `env`, `headers`, `auth_type`,
+`tools`, `usage_examples`, `faqs`, `notes`, `visibility` (`public` /
 `private` only). `slug` follows the same shape rules as create (§3.1
 field notes); a non-nil empty string is rejected as `slug_invalid`.
 
-**Immutable fields:** `id`, `owner_uid`, `space_id`, `creator_name`,
-`createdAt`. Attempts to change them are ignored, not rejected, so old
-clients don't break.
+**Immutable fields:** `mcp_id`, `owner_uid`, `space_id`, `creator_name`,
+`created_at`. Attempts to send them are rejected as unknown fields.
 
 **Response (200):** the updated `McpDetail`.
 
@@ -370,10 +370,10 @@ clients don't break.
 (`err.marketplace.mcp.name_taken` if a rename collides;
 `err.marketplace.mcp.slug_taken` if a slug change collides).
 
-### 4.6 `DELETE /mcps/{id}` — soft delete
+### 4.6 `DELETE /mcps/{mcp_id}` — soft delete
 
 Only the owner may call this endpoint. The row is soft-deleted
-(`deleted_at` set to now); `GET /mcps` and `GET /mcps/{id}` treat it as
+(`deleted_at` set to now); `GET /mcps` and `GET /mcps/{mcp_id}` treat it as
 gone. A second create with the same name is allowed after delete.
 
 **Response (204):** empty body.
@@ -426,7 +426,7 @@ verified as usual.
     { "name": "list_repositories", "description": "列出仓库" },
     { "name": "create_issue",      "description": "创建 Issue" }
   ],
-  "serverInfo": { "name": "GitHub MCP", "version": "1.2.0" }
+  "server_info": { "name": "GitHub MCP", "version": "1.2.0" }
 }
 ```
 
@@ -501,11 +501,11 @@ the wrong locale, forcing the user through a `secret_leaked` error
 before every real submit. The ASCII sentinel is locale-independent and
 grep-friendly.
 
-### 5.2 `authType`
+### 5.2 `auth_type`
 
-- `authType: "bearer"` is a marker only. Server never persists the
+- `auth_type: "bearer"` is a marker only. Server never persists the
   token.
-- `authType: "none"` is the default; when the field is absent or empty
+- `auth_type: "none"` is the default; when the field is absent or empty
   the server writes `"none"`.
 
 ### 5.3 Response side
@@ -526,23 +526,23 @@ Content-Type: application/json
 
 {"name":"Slack MCP","slug":"slack-mcp","category":"productivity",
  "transport":"streamable-http","url":"https://mcp.example.com/slack",
- "authType":"bearer","visibility":"public","tools":[]}
+ "auth_type":"bearer","visibility":"public","tools":[]}
 ```
 
 ```http
 HTTP/1.1 201 Created
 Content-Type: application/json
 
-{"id":"01HK7Z3B9YV0K5H0KR6QF8N4M2","name":"Slack MCP","slogan":"",
- "category":"productivity","icon":"","tags":[],"toolCount":0,
- "visibility":"public","creatorName":"李世超",
- "quickStart":{"transport":"streamable-http","serverName":"Slack MCP",
+{"mcp_id":"01HK7Z3B9YV0K5H0KR6QF8N4M2","name":"Slack MCP","slogan":"",
+ "category":"productivity","icon":"","tags":[],"tool_count":0,
+ "visibility":"public","creator_name":"李世超",
+ "quick_start":{"transport":"streamable-http","server_name":"Slack MCP",
                "slug":"slack-mcp",
-               "url":"https://mcp.example.com/slack","authType":"bearer",
+               "url":"https://mcp.example.com/slack","auth_type":"bearer",
                "headers":{}},
- "tools":[],"usageExamples":[],"faqs":[],"notes":[],
- "createdAt":"2026-07-14T18:30:12.123+08:00",
- "updatedAt":"2026-07-14T18:30:12.123+08:00"}
+ "tools":[],"usage_examples":[],"faqs":[],"notes":[],
+ "created_at":"2026-07-14T18:30:12.123+08:00",
+ "updated_at":"2026-07-14T18:30:12.123+08:00"}
 ```
 
 ### 6.2 List with keyword
@@ -557,10 +557,10 @@ X-Space-Id: 3fa85f64-…
 HTTP/1.1 200 OK
 Content-Type: application/json
 
-{"items":[{"id":"01HK7Z3B9YV0K5H0KR6QF8N4M2","name":"GitHub MCP",
+{"items":[{"mcp_id":"01HK7Z3B9YV0K5H0KR6QF8N4M2","name":"GitHub MCP",
            "slogan":"…","category":"dev","icon":"🐙",
-           "tags":["官方","热门"],"toolCount":8,
-           "visibility":"public","creatorName":"GitHub Bot"}],
+           "tags":["官方","热门"],"tool_count":8,
+           "visibility":"public","creator_name":"GitHub Bot"}],
  "total":1,
  "categories":[{"key":"all","count":1},{"key":"dev","count":1}]}
 ```
@@ -677,7 +677,7 @@ without extra secret plumbing during local development.
   in the body is silently overridden to `"system"`. `space_id` is
   always stored as NULL (system records are cross-Space).
 - Response (201): full `McpDetail` (§3.1) with `visibility = "system"`,
-  `creatorName` = the configured admin identity, and no space
+  `creator_name` = the configured admin identity, and no space
   attribution on the wire.
 - Errors: 400 `invalid_request` / `invalid_transport` /
   `secret_leaked` / `slug_invalid`; 401 `auth.admin_unauthorized`;
@@ -694,16 +694,16 @@ without extra secret plumbing during local development.
   is never returned (system rows carry NULL).
 - Errors: 401 `auth.admin_unauthorized`.
 
-**`GET /api/v1/admin/mcps/{id}`** — fetch a system MCP detail.
+**`GET /api/v1/admin/mcps/{mcp_id}`** — fetch a system MCP detail.
 
 - Response (200): full `McpDetail` (§3.1). A record whose visibility is
   not `system` collapses to 404 — the admin surface deliberately cannot
   peek at Space-scoped records by ID.
 - Errors: 401 `auth.admin_unauthorized`; 404 `not_found`.
 
-**`PATCH /api/v1/admin/mcps/{id}`** — update a system MCP.
+**`PATCH /api/v1/admin/mcps/{mcp_id}`** — update a system MCP.
 
-- Body: same partial-update shape as public `PATCH /mcps/{id}` (§4.5).
+- Body: same partial-update shape as public `PATCH /mcps/{mcp_id}` (§4.5).
   Any `visibility` in the body must be `"system"` (or omitted); other
   values are rejected 400 `invalid_visibility` — a PATCH cannot demote
   a system row to public/private (which would silently strip it from
@@ -718,9 +718,9 @@ without extra secret plumbing during local development.
   `auth.admin_unauthorized`; 404 `not_found`; 409 `name_taken` /
   `slug_taken`.
 
-**`DELETE /api/v1/admin/mcps/{id}`** — soft-delete a system MCP.
+**`DELETE /api/v1/admin/mcps/{mcp_id}`** — soft-delete a system MCP.
 
-- Same soft-delete semantics as public `DELETE /mcps/{id}` (§4.6):
+- Same soft-delete semantics as public `DELETE /mcps/{mcp_id}` (§4.6):
   `deleted_at` is stamped; the record disappears from admin/public
   list responses and detail lookups.
 - Ownership is not enforced (see PATCH note above).
