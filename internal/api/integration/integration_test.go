@@ -81,6 +81,13 @@ var skillCols = []string{"id", "name", "display_name", "icon_url", "source_skill
 	"readme_content", "file_name", "file_url", "file_size", "file_sha256",
 	"created_at", "updated_at", "resolved_version", "version_storage"}
 
+// skillListCols is the column set for List queries (no version_storage).
+var skillListCols = []string{"id", "name", "display_name", "icon_url", "source_skill_id", "current_version_id",
+	"description", "category_id", "tags",
+	"owner_id", "owner_name", "space_id", "visibility", "version",
+	"readme_content", "file_name", "file_url", "file_size", "file_sha256",
+	"created_at", "updated_at", "resolved_version"}
+
 func skillRow(id, name, ownerID, ownerName, spaceID, visibility string) *sqlmock.Rows {
 	now := time.Now().UTC()
 	return sqlmock.NewRows(skillCols).AddRow(
@@ -89,6 +96,17 @@ func skillRow(id, name, ownerID, ownerName, spaceID, visibility string) *sqlmock
 		ownerID, ownerName, spaceID, visibility, "1.0.0",
 		"readme", "file.zip", fmt.Sprintf("skills/%s/v1.0.0/file.zip", id), int64(1024), "sha256",
 		now, now, "1.0.0", "",
+	)
+}
+
+func skillListRow(id, name, ownerID, ownerName, spaceID, visibility string) *sqlmock.Rows {
+	now := time.Now().UTC()
+	return sqlmock.NewRows(skillListCols).AddRow(
+		id, name, name, "", "", "",
+		"description", "cat-1", []byte(`[]`),
+		ownerID, ownerName, spaceID, visibility, "1.0.0",
+		"readme", "file.zip", fmt.Sprintf("skills/%s/v1.0.0/file.zip", id), int64(1024), "sha256",
+		now, now, "1.0.0",
 	)
 }
 
@@ -407,15 +425,15 @@ func TestListSkills(t *testing.T) {
 
 	now := time.Now().UTC()
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(sqlmock.NewRows(skillCols).
+		WillReturnRows(sqlmock.NewRows(skillListCols).
 			AddRow("s1", "Skill 1", "Skill 1", "", "", "",
 				"desc1", "cat-1", []byte(`[]`),
 				"user-1", "Alice", "space-1", "space", "1.0.0",
-				"", "f.zip", "url", int64(100), "sha", now, now, "1.0.0", "").
+				"", "f.zip", "url", int64(100), "sha", now, now, "1.0.0").
 			AddRow("s2", "Skill 2", "Skill 2", "", "", "",
 				"desc2", "cat-1", []byte(`[]`),
 				"user-2", "Bob", "space-1", "public", "1.0.0",
-				"", "f.zip", "url", int64(200), "sha", now, now, "1.0.0", ""))
+				"", "f.zip", "url", int64(200), "sha", now, now, "1.0.0"))
 
 	w := doRequest(engine, "GET", "/api/v1/skill", nil)
 
@@ -434,7 +452,7 @@ func TestListSkillsWithCategoryFilter(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(skillRow("s1", "Filtered", "user-1", "Alice", "space-1", "space"))
+		WillReturnRows(skillListRow("s1", "Filtered", "user-1", "Alice", "space-1", "space"))
 
 	w := doRequest(engine, "GET", "/api/v1/skill?category_id=cat-1", nil)
 
@@ -448,7 +466,7 @@ func TestListSkillsSearch(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(sqlmock.NewRows(skillCols))
+		WillReturnRows(sqlmock.NewRows(skillListCols))
 
 	w := doRequest(engine, "GET", "/api/v1/skill?q=test", nil)
 
@@ -462,7 +480,7 @@ func TestListMine(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(skillRow("s1", "My Skill", "user-1", "Alice", "space-1", "private"))
+		WillReturnRows(skillListRow("s1", "My Skill", "user-1", "Alice", "space-1", "private"))
 
 	w := doRequest(engine, "GET", "/api/v1/skill/mine", nil)
 
