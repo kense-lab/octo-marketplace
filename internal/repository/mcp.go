@@ -46,17 +46,18 @@ func New(db *sql.DB) *Repository {
 // ListFilter carries the resolved visibility scope plus the query params. The
 // service builds it; the repository only translates it to SQL.
 type ListFilter struct {
-	CallerUID    string
-	SpaceID      string
-	Keyword      string
-	Category     string // "" or CategoryKeyAll disables the category predicate
-	Categories   []string
-	Tags         []string
-	Transports   []string
-	Visibilities []string
-	Sort         string
-	Limit        int
-	Offset       int
+	CallerUID            string
+	SpaceID              string
+	Keyword              string
+	Categories           []string
+	Tags                 []string
+	Transports           []string
+	Visibilities         []string
+	Sources              []string
+	VerificationStatuses []string
+	Sort                 string
+	Limit                int
+	Offset               int
 	// MineOnly restricts the result to rows owned by CallerUID inside SpaceID
 	// (GET /mcps/mine, doc §4.3). When false, the visible-set rule applies
 	// (GET /mcps, doc §4.2).
@@ -208,6 +209,9 @@ func (r *Repository) List(ctx context.Context, f ListFilter) ([]model.MCP, int, 
 	pageWhere := where
 	pageArgs := append([]any{}, args...)
 	orderBy := "updated_at DESC, id DESC"
+	if f.Sort == "verified" {
+		orderBy = "verified_at DESC, updated_at DESC, id DESC"
+	}
 	if f.Sort == "relevance" && strings.TrimSpace(f.Keyword) != "" {
 		// Exact tool/tag/name hits outrank descriptive matches. The id tie-breaker
 		// makes offset pagination deterministic when scores and timestamps match.
@@ -308,10 +312,6 @@ func (f ListFilter) buildWhere() (string, []any) {
 		args = append(args, like, like, like, like, like, like, like)
 	}
 
-	if cat := strings.TrimSpace(f.Category); cat != "" && cat != model.CategoryKeyAll {
-		clauses = append(clauses, "category = ?")
-		args = append(args, cat)
-	}
 	appendIn := func(column string, values []string) {
 		if len(values) == 0 {
 			return
@@ -326,6 +326,25 @@ func (f ListFilter) buildWhere() (string, []any) {
 	appendIn("category", f.Categories)
 	appendIn("transport", f.Transports)
 	appendIn("visibility", f.Visibilities)
+	appendIn("verification_status", f.VerificationStatuses)
+	if len(f.Sources) > 0 {
+		parts := make([]string, 0, len(f.Sources))
+		for _, source := range f.Sources {
+			switch source {
+			case "system":
+				parts = append(parts, "visibility = 'system'")
+			case "mine":
+				parts = append(parts, "owner_uid = ?")
+				args = append(args, f.CallerUID)
+			case "space":
+				parts = append(parts, "visibility <> 'system' AND space_id = ?")
+				args = append(args, f.SpaceID)
+			}
+		}
+		if len(parts) > 0 {
+			clauses = append(clauses, "("+strings.Join(parts, " OR ")+")")
+		}
+	}
 	if len(f.Tags) > 0 {
 		parts := make([]string, 0, len(f.Tags))
 		for _, tag := range f.Tags {
@@ -361,13 +380,13 @@ func insert(ctx context.Context, ex execer, m *model.MCP) error {
 	const q = `INSERT INTO mcp_servers
 	  (id, name, slug, slogan, category, icon, icon_version, tags_json, tools_json, usage_examples_json,
 	   faqs_json, notes_json, visibility, owner_uid, space_id, creator_name,
-	   transport, config_json, created_at, updated_at, deleted_at)
-	  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
+	   transport, verification_status, verified_at, config_json, created_at, updated_at, deleted_at)
+	  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`
 	_, err = ex.ExecContext(ctx, q,
 		m.ID, m.Name, m.Slug, m.Slogan, m.Category, m.Icon, m.IconVersion,
 		cols.tags, cols.tools, cols.usage, cols.faqs, cols.notes,
 		string(m.Visibility), m.OwnerUID, nullableSpace(m.SpaceID), m.CreatorName,
-		string(m.Transport), cols.config, m.CreatedAt, m.UpdatedAt,
+		string(m.Transport), defaultVerification(m.VerificationStatus), m.VerifiedAt, cols.config, m.CreatedAt, m.UpdatedAt,
 	)
 	return err
 }
@@ -380,12 +399,12 @@ func update(ctx context.Context, ex execer, m *model.MCP) error {
 	const q = `UPDATE mcp_servers SET
 	  name = ?, slug = ?, slogan = ?, category = ?, icon = ?, icon_version = ?, tags_json = ?, tools_json = ?,
 	  usage_examples_json = ?, faqs_json = ?, notes_json = ?, visibility = ?,
-	  transport = ?, config_json = ?, updated_at = ?
+	  transport = ?, verification_status = ?, verified_at = ?, config_json = ?, updated_at = ?
 	  WHERE id = ? AND deleted_at IS NULL`
 	res, err := ex.ExecContext(ctx, q,
 		m.Name, m.Slug, m.Slogan, m.Category, m.Icon, m.IconVersion,
 		cols.tags, cols.tools, cols.usage, cols.faqs, cols.notes,
-		string(m.Visibility), string(m.Transport), cols.config, m.UpdatedAt,
+		string(m.Visibility), string(m.Transport), defaultVerification(m.VerificationStatus), m.VerifiedAt, cols.config, m.UpdatedAt,
 		m.ID,
 	)
 	if err != nil {
@@ -411,7 +430,14 @@ func nullableSpace(spaceID string) any {
 
 const columns = `id, name, slug, slogan, category, icon, icon_version, tags_json, tools_json,
 	usage_examples_json, faqs_json, notes_json, visibility, owner_uid, space_id,
-	creator_name, transport, config_json, created_at, updated_at, deleted_at`
+	creator_name, transport, verification_status, verified_at, config_json, created_at, updated_at, deleted_at`
+
+func defaultVerification(value string) string {
+	if value == "" {
+		return "unverified"
+	}
+	return value
+}
 
 type marshaledColumns struct {
 	tags   []byte
@@ -457,29 +483,35 @@ type rowScanner interface {
 
 func scanRow(s rowScanner) (*model.MCP, error) {
 	var (
-		m          model.MCP
-		tags       []byte
-		tools      []byte
-		usage      []byte
-		faqs       []byte
-		notes      []byte
-		config     []byte
-		spaceID    sql.NullString
-		visibility string
-		transport  string
-		deletedAt  sql.NullTime
+		m                  model.MCP
+		tags               []byte
+		tools              []byte
+		usage              []byte
+		faqs               []byte
+		notes              []byte
+		config             []byte
+		spaceID            sql.NullString
+		visibility         string
+		transport          string
+		verificationStatus string
+		verifiedAt         sql.NullTime
+		deletedAt          sql.NullTime
 	)
 	if err := s.Scan(
 		&m.ID, &m.Name, &m.Slug, &m.Slogan, &m.Category, &m.Icon, &m.IconVersion,
 		&tags, &tools, &usage, &faqs, &notes,
 		&visibility, &m.OwnerUID, &spaceID, &m.CreatorName,
-		&transport, &config, &m.CreatedAt, &m.UpdatedAt, &deletedAt,
+		&transport, &verificationStatus, &verifiedAt, &config, &m.CreatedAt, &m.UpdatedAt, &deletedAt,
 	); err != nil {
 		return nil, err
 	}
 
 	m.Visibility = model.Visibility(visibility)
 	m.Transport = model.Transport(transport)
+	m.VerificationStatus = verificationStatus
+	if verifiedAt.Valid {
+		m.VerifiedAt = &verifiedAt.Time
+	}
 	if spaceID.Valid {
 		m.SpaceID = spaceID.String
 	}
