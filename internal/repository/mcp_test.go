@@ -58,7 +58,7 @@ func cleanTuple(t *testing.T, database *sql.DB, owner, space, name string) {
 	t.Helper()
 	if _, err := database.ExecContext(context.Background(),
 		`DELETE FROM mcp_servers WHERE owner_uid = ? AND space_id <=> ? AND name = ?`,
-		owner, nullableSpace(space), name,
+		owner, nullableString(space), name,
 	); err != nil {
 		t.Fatalf("clean tuple: %v", err)
 	}
@@ -70,7 +70,7 @@ func countLive(t *testing.T, database *sql.DB, owner, space, name string) int {
 	if err := database.QueryRowContext(context.Background(),
 		`SELECT COUNT(*) FROM mcp_servers
 		  WHERE owner_uid = ? AND space_id <=> ? AND name = ? AND deleted_at IS NULL`,
-		owner, nullableSpace(space), name,
+		owner, nullableString(space), name,
 	).Scan(&n); err != nil {
 		t.Fatalf("count live: %v", err)
 	}
@@ -85,15 +85,16 @@ func newTestMCP(name, owner, space string) *model.MCP {
 		// Slug empty → generated column slug_live = NULL → excluded from the
 		// per-Space slug UNIQUE index. Tests that specifically exercise slug
 		// uniqueness set Slug on the returned struct before Create.
-		Slug:       "",
-		Category:   "dev",
-		Visibility: model.VisibilityPrivate,
-		OwnerUID:   owner,
-		SpaceID:    space,
-		Transport:  model.TransportStdio,
-		Connection: model.Connection{Command: "npx"},
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		Slug:          "",
+		Category:      "dev",
+		Visibility:    model.VisibilityPrivate,
+		OwnerUID:      owner,
+		SpaceID:       space,
+		CreatedByType: model.CreatedByHuman,
+		Transport:     model.TransportStdio,
+		Connection:    model.Connection{Command: "npx"},
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 }
 
