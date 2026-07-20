@@ -109,10 +109,15 @@ const defaultIconMaxBytes = 2 << 20 // 2 MiB
 
 // ListParams carries the query parameters for the two list endpoints.
 type ListParams struct {
-	Keyword  string
-	Category string
-	Limit    int
-	Offset   int
+	Keyword      string
+	Category     string
+	Categories   []string
+	Tags         []string
+	Transports   []string
+	Visibilities []string
+	Sort         string
+	Limit        int
+	Offset       int
 }
 
 // Create validates + normalizes a flat create body, redacts secrets, stamps
@@ -291,6 +296,8 @@ func (s *Service) ListSystem(ctx context.Context, p ListParams) (model.ListRespo
 	filter := repository.ListFilter{
 		Keyword:    p.Keyword,
 		Category:   p.Category,
+		Categories: p.Categories, Tags: p.Tags, Transports: p.Transports,
+		Visibilities: p.Visibilities, Sort: p.Sort,
 		Limit:      clampLimit(p.Limit),
 		Offset:     clampOffset(p.Offset),
 		SystemOnly: true,
@@ -461,13 +468,15 @@ func (s *Service) buildSystemFromCreate(caller Caller, req model.CreateRequest) 
 
 func (s *Service) list(ctx context.Context, caller Caller, p ListParams, mineOnly bool) (model.ListResponse, *apierr.Error) {
 	filter := repository.ListFilter{
-		CallerUID: caller.UID,
-		SpaceID:   caller.SpaceID,
-		Keyword:   p.Keyword,
-		Category:  p.Category,
-		Limit:     clampLimit(p.Limit),
-		Offset:    clampOffset(p.Offset),
-		MineOnly:  mineOnly,
+		CallerUID:  caller.UID,
+		SpaceID:    caller.SpaceID,
+		Keyword:    p.Keyword,
+		Category:   p.Category,
+		Categories: p.Categories, Tags: p.Tags, Transports: p.Transports,
+		Visibilities: p.Visibilities, Sort: p.Sort,
+		Limit:    clampLimit(p.Limit),
+		Offset:   clampOffset(p.Offset),
+		MineOnly: mineOnly,
 	}
 	records, total, cats, err := s.store.List(ctx, filter)
 	if err != nil {

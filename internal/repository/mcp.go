@@ -46,12 +46,17 @@ func New(db *sql.DB) *Repository {
 // ListFilter carries the resolved visibility scope plus the query params. The
 // service builds it; the repository only translates it to SQL.
 type ListFilter struct {
-	CallerUID string
-	SpaceID   string
-	Keyword   string
-	Category  string // "" or CategoryKeyAll disables the category predicate
-	Limit     int
-	Offset    int
+	CallerUID    string
+	SpaceID      string
+	Keyword      string
+	Category     string // "" or CategoryKeyAll disables the category predicate
+	Categories   []string
+	Tags         []string
+	Transports   []string
+	Visibilities []string
+	Sort         string
+	Limit        int
+	Offset       int
 	// MineOnly restricts the result to rows owned by CallerUID inside SpaceID
 	// (GET /mcps/mine, doc §4.3). When false, the visible-set rule applies
 	// (GET /mcps, doc §4.2).
@@ -202,8 +207,18 @@ func (r *Repository) List(ctx context.Context, f ListFilter) ([]model.MCP, int, 
 
 	pageWhere := where
 	pageArgs := append([]any{}, args...)
+	orderBy := "updated_at DESC, id DESC"
+	if f.Sort == "relevance" && strings.TrimSpace(f.Keyword) != "" {
+		// Exact tool/tag/name hits outrank descriptive matches. The id tie-breaker
+		// makes offset pagination deterministic when scores and timestamps match.
+		orderBy = `((name LIKE ?) * 8 + (JSON_SEARCH(tags_json, 'one', ?) IS NOT NULL) * 6 + ` +
+			`(JSON_SEARCH(tools_json, 'one', ?, NULL, '$[*].name') IS NOT NULL) * 7 + ` +
+			`(slogan LIKE ?) * 2) DESC, updated_at DESC, id DESC`
+		like := "%" + escapeLike(strings.TrimSpace(f.Keyword)) + "%"
+		pageArgs = append(pageArgs, like, like, like, like)
+	}
 	q := `SELECT ` + columns + ` FROM mcp_servers WHERE ` + pageWhere +
-		` ORDER BY created_at DESC LIMIT ? OFFSET ?`
+		` ORDER BY ` + orderBy + ` LIMIT ? OFFSET ?`
 	pageArgs = append(pageArgs, f.Limit, f.Offset)
 
 	rows, err := r.db.QueryContext(ctx, q, pageArgs...)
@@ -285,14 +300,39 @@ func (f ListFilter) buildWhere() (string, []any) {
 	clauses = append(clauses, "deleted_at IS NULL")
 
 	if kw := strings.TrimSpace(f.Keyword); kw != "" {
-		clauses = append(clauses, "(name LIKE ? OR slogan LIKE ?)")
+		clauses = append(clauses, `(name LIKE ? OR slogan LIKE ? OR category LIKE ? OR `+
+			`JSON_SEARCH(tags_json, 'one', ?) IS NOT NULL OR `+
+			`JSON_SEARCH(tools_json, 'one', ?, NULL, '$[*].name', '$[*].description') IS NOT NULL OR `+
+			`JSON_SEARCH(usage_examples_json, 'one', ?) IS NOT NULL OR creator_name LIKE ?)`)
 		like := "%" + escapeLike(kw) + "%"
-		args = append(args, like, like)
+		args = append(args, like, like, like, like, like, like, like)
 	}
 
 	if cat := strings.TrimSpace(f.Category); cat != "" && cat != model.CategoryKeyAll {
 		clauses = append(clauses, "category = ?")
 		args = append(args, cat)
+	}
+	appendIn := func(column string, values []string) {
+		if len(values) == 0 {
+			return
+		}
+		marks := make([]string, len(values))
+		for i, value := range values {
+			marks[i] = "?"
+			args = append(args, value)
+		}
+		clauses = append(clauses, column+" IN ("+strings.Join(marks, ",")+")")
+	}
+	appendIn("category", f.Categories)
+	appendIn("transport", f.Transports)
+	appendIn("visibility", f.Visibilities)
+	if len(f.Tags) > 0 {
+		parts := make([]string, 0, len(f.Tags))
+		for _, tag := range f.Tags {
+			parts = append(parts, "JSON_CONTAINS(tags_json, JSON_QUOTE(?))")
+			args = append(args, tag)
+		}
+		clauses = append(clauses, "("+strings.Join(parts, " OR ")+")")
 	}
 
 	return strings.Join(clauses, " AND "), args

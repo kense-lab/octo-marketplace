@@ -355,11 +355,28 @@ func listParams(c *gin.Context) (service.ListParams, int, int) {
 		pageSize = 100
 	}
 	return service.ListParams{
-		Keyword:  strings.TrimSpace(c.Query("keyword")),
-		Category: strings.TrimSpace(c.Query("category")),
-		Limit:    pageSize,
-		Offset:   (page - 1) * pageSize,
+		Keyword:      strings.TrimSpace(c.Query("keyword")),
+		Category:     strings.TrimSpace(c.Query("category")),
+		Categories:   splitQuery(c.QueryArray("category")),
+		Tags:         splitQuery(c.QueryArray("tag")),
+		Transports:   splitQuery(c.QueryArray("transport")),
+		Visibilities: splitQuery(c.QueryArray("visibility")),
+		Sort:         strings.TrimSpace(c.Query("sort")),
+		Limit:        pageSize,
+		Offset:       (page - 1) * pageSize,
 	}, page, pageSize
+}
+
+func splitQuery(values []string) []string {
+	var result []string
+	for _, value := range values {
+		for _, item := range strings.Split(value, ",") {
+			if item = strings.TrimSpace(item); item != "" && item != model.CategoryKeyAll {
+				result = append(result, item)
+			}
+		}
+	}
+	return result
 }
 
 func positiveInt(value string, fallback int) int {
