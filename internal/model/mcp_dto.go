@@ -89,15 +89,15 @@ type QuickStart struct {
 // Detail is the full record returned by GET /mcps/{id}, POST /mcps, PATCH
 // /mcps/{id} (doc §3.1). owner_uid is never surfaced.
 type Detail struct {
-	ID            string     `json:"mcp_id"`
-	Name          string     `json:"name"`
-	Slogan        string     `json:"slogan"`
-	Category      string     `json:"category"`
-	Icon          string     `json:"icon"`
-	Tags          []string   `json:"tags"`
-	ToolCount     int        `json:"tool_count"`
-	Visibility    Visibility `json:"visibility"`
-	CreatorName   string     `json:"creator_name"`
+	ID          string     `json:"mcp_id"`
+	Name        string     `json:"name"`
+	Slogan      string     `json:"slogan"`
+	Category    string     `json:"category"`
+	Icon        string     `json:"icon"`
+	Tags        []string   `json:"tags"`
+	ToolCount   int        `json:"tool_count"`
+	Visibility  Visibility `json:"visibility"`
+	CreatorName string     `json:"creator_name"`
 	// CreatedByType is always present (falls back to "human" for legacy rows
 	// pre-#894). CreatedByBotUID / CreatedByBotName are omitted when this row
 	// was authored by a human — the frontend uses the presence of the bot
@@ -116,15 +116,15 @@ type Detail struct {
 
 // ListItem is the projection used by GET /mcps and GET /mcps/mine (doc §3.2).
 type ListItem struct {
-	ID                 string     `json:"mcp_id"`
-	Name               string     `json:"name"`
-	Slogan             string     `json:"slogan"`
-	Category           string     `json:"category"`
-	Icon               string     `json:"icon"`
-	Tags               []string   `json:"tags"`
-	ToolCount          int        `json:"tool_count"`
-	Visibility         Visibility `json:"visibility"`
-	CreatorName        string     `json:"creator_name"`
+	ID          string     `json:"mcp_id"`
+	Name        string     `json:"name"`
+	Slogan      string     `json:"slogan"`
+	Category    string     `json:"category"`
+	Icon        string     `json:"icon"`
+	Tags        []string   `json:"tags"`
+	ToolCount   int        `json:"tool_count"`
+	Visibility  Visibility `json:"visibility"`
+	CreatorName string     `json:"creator_name"`
 	// Same shape + semantics as Detail (see there for rationale).
 	CreatedByType      CreatedByType `json:"created_by_type"`
 	CreatedByBotUID    string        `json:"created_by_bot_uid,omitempty"`

@@ -109,29 +109,29 @@ type MCP struct {
 	// mcpServers snippets (mcp-v1.md §3). Unique per Space among live rows
 	// (see migration 03). Never empty on persisted rows — the service
 	// auto-derives it from Name when the request omits it.
-	Slug               string
-	Slogan             string
-	Category           string
-	Icon               string
-	IconVersion        int
-	Tags               []string
-	Tools              []Tool
-	UsageExamples      []string
-	FAQs               []FAQ
-	Notes              []string
-	Visibility         Visibility
-	OwnerUID           string
-	SpaceID            string // empty string means NULL (system rows)
-	CreatorName        string
+	Slug          string
+	Slogan        string
+	Category      string
+	Icon          string
+	IconVersion   int
+	Tags          []string
+	Tools         []Tool
+	UsageExamples []string
+	FAQs          []FAQ
+	Notes         []string
+	Visibility    Visibility
+	OwnerUID      string
+	SpaceID       string // empty string means NULL (system rows)
+	CreatorName   string
 	// CreatedByType / CreatedByBotUID / CreatedByBotName record provenance
 	// (issue #894). For human creates CreatedByType == CreatedByHuman and the
 	// two bot fields are empty. For bot creates the fields are stamped from
 	// the resolved BotIdentity — CreatedByBotName is a snapshot so the market
 	// badge stays intact after the bot is renamed or deleted.
-	CreatedByType    CreatedByType
-	CreatedByBotUID  string
-	CreatedByBotName string
-	Transport        Transport
+	CreatedByType      CreatedByType
+	CreatedByBotUID    string
+	CreatedByBotName   string
+	Transport          Transport
 	VerificationStatus string
 	VerifiedAt         *time.Time
 	Connection         Connection
