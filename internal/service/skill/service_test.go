@@ -168,7 +168,7 @@ func TestToListResultResolvesTagNamesInOneBatch(t *testing.T) {
 	}
 }
 
-func TestDeleteDeletesAllVersionArtifacts(t *testing.T) {
+func TestDeleteSoftDeletesWithoutArtifactCleanup(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -180,8 +180,6 @@ func TestDeleteDeletesAllVersionArtifacts(t *testing.T) {
 	now := time.Now()
 
 	currentStorage := `{"type":"s3","zip_object_key":"skills/user-skill/v2/skill.zip","skill_md_object_key":"skills/user-skill/v2/SKILL.md"}`
-	oldStorage := `{"type":"s3","zip_object_key":"skills/user-skill/v1/skill.zip","skill_md_object_key":"skills/user-skill/v1/SKILL.md"}`
-	legacyStorage := `{"type":"s3","object_key":"skills/user-skill/v0/legacy.zip"}`
 
 	mock.ExpectQuery("SELECT .+ FROM skills").
 		WithArgs("user-skill").
@@ -202,14 +200,6 @@ func TestDeleteDeletesAllVersionArtifacts(t *testing.T) {
 			"2.0.0", currentStorage,
 			int64(0), int64(0),
 		))
-	mock.ExpectQuery("SELECT id, skill_id, version, changelog, storage, changed_by, created_at").
-		WithArgs("user-skill").
-		WillReturnRows(sqlmock.NewRows([]string{
-			"id", "skill_id", "version", "changelog", "storage", "changed_by", "created_at",
-		}).
-			AddRow("v2", "user-skill", "2.0.0", "", currentStorage, "user-1", now).
-			AddRow("v1", "user-skill", "1.0.0", "", oldStorage, "user-1", now.Add(-time.Hour)).
-			AddRow("v0", "user-skill", "0.9.0", "", legacyStorage, "user-1", now.Add(-2*time.Hour)))
 	mock.ExpectExec("UPDATE skills").
 		WithArgs("user-skill").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -218,24 +208,8 @@ func TestDeleteDeletesAllVersionArtifacts(t *testing.T) {
 		t.Fatalf("Delete error = %v", err)
 	}
 
-	want := map[string]bool{
-		"skills/user-skill/v2/skill.zip":  true,
-		"skills/user-skill/v2/SKILL.md":   true,
-		"skills/user-skill/v1/skill.zip":  true,
-		"skills/user-skill/v1/SKILL.md":   true,
-		"skills/user-skill/v0/legacy.zip": true,
-	}
-	if len(store.deleteKeys) != len(want) {
-		t.Fatalf("deleteKeys=%v, want %d keys", store.deleteKeys, len(want))
-	}
-	for _, key := range store.deleteKeys {
-		if !want[key] {
-			t.Fatalf("unexpected delete key %q in %v", key, store.deleteKeys)
-		}
-		delete(want, key)
-	}
-	if len(want) != 0 {
-		t.Fatalf("missing delete keys: %v", want)
+	if len(store.deleteKeys) != 0 {
+		t.Fatalf("deleteKeys=%v, want no artifact cleanup for soft delete", store.deleteKeys)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
