@@ -30,7 +30,7 @@ func NewAdminMCP(svc AdminMCPService) *AdminMCP { return &AdminMCP{svc: svc} }
 // @ID admin_mcp.create
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param body body model.CreateRequest true "System MCP server"
 // @Success 201 {object} apiresponse.Data[model.Detail]
 // @Failure 400 {object} apiresponse.Error "VALIDATION_ERROR"
@@ -66,7 +66,7 @@ func (h *AdminMCP) Create(c *gin.Context) {
 // @ID admin_mcp.list
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param keyword query string false "Search keyword"
 // @Param category query string false "Category key"
 // @Param transport query []string false "Transport filters"
@@ -97,7 +97,7 @@ func (h *AdminMCP) List(c *gin.Context) {
 // @ID admin_mcp.get
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param mcp_id path string true "MCP ID"
 // @Success 200 {object} apiresponse.Data[model.Detail]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
@@ -121,7 +121,7 @@ func (h *AdminMCP) Get(c *gin.Context) {
 // @ID admin_mcp.update
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param mcp_id path string true "MCP ID"
 // @Param body body model.PatchRequest true "MCP changes"
 // @Success 200 {object} apiresponse.Data[model.Detail]
@@ -153,7 +153,7 @@ func (h *AdminMCP) Patch(c *gin.Context) {
 // @ID admin_mcp.delete
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param mcp_id path string true "MCP ID"
 // @Success 200 {object} apiresponse.Data[apiresponse.EmptyResp]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
@@ -176,7 +176,7 @@ func (h *AdminMCP) Delete(c *gin.Context) {
 // @ID admin_mcp.probe
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param body body service.ProbeRequest true "Connection to probe"
 // @Success 200 {object} apiresponse.Data[service.ProbeResponse]
 // @Failure 400 {object} apiresponse.Error "VALIDATION_ERROR"

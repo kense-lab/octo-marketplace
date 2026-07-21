@@ -14,11 +14,13 @@ import (
 func (h *Handler) RegisterAdmin(r *gin.Engine, adminAuth *middleware.AdminAuthenticator, idGen func() string) {
 	h.idGen = idGen
 	admin := r.Group("/api/v1/admin/skill_categories", adminAuth.Handler())
+	admin.GET("", h.AdminList)
 	admin.POST("", h.AdminCreate)
 	admin.PATCH("/:skill_category_id", h.AdminUpdate)
 	admin.DELETE("/:skill_category_id", h.AdminDelete)
 
 	legacy := r.Group("/api/v1/skill/admin/categories", adminAuth.Handler(), legacyCategoryEndpoint)
+	legacy.GET("", h.AdminList)
 	legacy.POST("", h.AdminCreate)
 	legacy.PUT("/:skill_category_id", h.AdminUpdate)
 	legacy.DELETE("/:skill_category_id", h.AdminDelete)
@@ -30,6 +32,33 @@ type AdminCategoryRequest struct {
 	SortOrder int    `json:"sort_order"`
 }
 
+// AdminList godoc
+// @Summary List Skill categories (admin)
+// @Description Return non-deleted Skill categories for administrator management.
+// @Tags skill_category
+// @ID skill_category.admin.list
+// @Accept json
+// @Produce json
+// @Security AdminToken
+// @Success 200 {object} apiresponse.Data[[]categorysvc.AdminItem]
+// @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
+// @Failure 403 {object} apiresponse.Error "FORBIDDEN"
+// @Failure 404 {object} apiresponse.Error "NOT_FOUND"
+// @Failure 500 {object} apiresponse.Error "INTERNAL_ERROR"
+// @Router /admin/skill_categories [get]
+func (h *Handler) AdminList(c *gin.Context) {
+	if _, ok := middleware.Identity(c); !ok {
+		apiresponse.Fail(c, http.StatusUnauthorized, errcode.Unauthorized, "authentication is required", nil, "")
+		return
+	}
+	items, err := h.svc.AdminList(c.Request.Context())
+	if err != nil {
+		apiresponse.Fail(c, http.StatusInternalServerError, errcode.InternalError, "internal error", nil, "")
+		return
+	}
+	apiresponse.OK(c, items)
+}
+
 // AdminCreate godoc
 // @Summary Create Skill category
 // @Description Create a Skill category through the SuperAdmin-gated administrator surface.
@@ -37,13 +66,14 @@ type AdminCategoryRequest struct {
 // @ID skill_category.create
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param body body AdminCategoryRequest true "Skill category"
 // @Success 201 {object} apiresponse.Data[categorysvc.AdminItem]
 // @Failure 400 {object} apiresponse.Error "VALIDATION_ERROR"
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
 // @Failure 403 {object} apiresponse.Error "FORBIDDEN"
 // @Failure 404 {object} apiresponse.Error "NOT_FOUND"
+// @Failure 409 {object} apiresponse.Error "CONFLICT"
 // @Failure 500 {object} apiresponse.Error "INTERNAL_ERROR"
 // @Router /admin/skill_categories [post]
 func (h *Handler) AdminCreate(c *gin.Context) {
@@ -58,6 +88,10 @@ func (h *Handler) AdminCreate(c *gin.Context) {
 	}
 	item, err := h.svc.Create(c.Request.Context(), h.idGen(), req.Name, req.IconKey, req.SortOrder)
 	if err != nil {
+		if errors.Is(err, categorysvc.ErrCategoryAlreadyExists) {
+			apiresponse.Fail(c, http.StatusConflict, errcode.Conflict, "category name already exists", nil, "")
+			return
+		}
 		apiresponse.Fail(c, http.StatusInternalServerError, errcode.InternalError, "internal error", nil, "")
 		return
 	}
@@ -71,7 +105,7 @@ func (h *Handler) AdminCreate(c *gin.Context) {
 // @ID skill_category.update
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_category_id path string true "Skill category ID"
 // @Param body body AdminCategoryRequest true "Skill category changes"
 // @Success 200 {object} apiresponse.Data[categorysvc.AdminItem]
@@ -96,6 +130,10 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 		apiresponse.Fail(c, http.StatusNotFound, errcode.NotFound, "category not found", nil, "")
 		return
 	}
+	if errors.Is(err, categorysvc.ErrCategoryAlreadyExists) {
+		apiresponse.Fail(c, http.StatusConflict, errcode.Conflict, "category name already exists", nil, "")
+		return
+	}
 	if err != nil {
 		apiresponse.Fail(c, http.StatusInternalServerError, errcode.InternalError, "internal error", nil, "")
 		return
@@ -110,7 +148,7 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 // @ID skill_category.delete
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_category_id path string true "Skill category ID"
 // @Success 200 {object} apiresponse.Data[apiresponse.EmptyResp]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"

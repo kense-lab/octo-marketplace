@@ -15,21 +15,39 @@ import (
 
 // Service handles the upload/parse business logic.
 type Service struct {
-	store  storage.Storage
-	repo   *Repo
-	worker *Worker
-	idGen  func() string
-	maxMB  int
+	store        storage.Storage
+	repo         *Repo
+	worker       *Worker
+	idGen        func() string
+	maxMB        int
+	staleTimeout time.Duration
+	maxAttempts  int
+}
+
+// ServiceConfig holds configuration for the parse service.
+type ServiceConfig struct {
+	StaleTimeout time.Duration
+	MaxAttempts  int
 }
 
 // NewService creates a parse service.
-func NewService(store storage.Storage, repo *Repo, worker *Worker, idGen func() string, maxMB int) *Service {
+func NewService(store storage.Storage, repo *Repo, worker *Worker, idGen func() string, maxMB int, cfg ServiceConfig) *Service {
+	staleTimeout := cfg.StaleTimeout
+	if staleTimeout <= 0 {
+		staleTimeout = 5 * time.Minute
+	}
+	maxAttempts := cfg.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 2
+	}
 	return &Service{
-		store:  store,
-		repo:   repo,
-		worker: worker,
-		idGen:  idGen,
-		maxMB:  maxMB,
+		store:        store,
+		repo:         repo,
+		worker:       worker,
+		idGen:        idGen,
+		maxMB:        maxMB,
+		staleTimeout: staleTimeout,
+		maxAttempts:  maxAttempts,
 	}
 }
 
@@ -38,6 +56,9 @@ var ErrInvalidFileName = errors.New("file_name must be a safe .zip basename")
 
 // ErrFileTooLarge indicates the file exceeds the upload limit.
 var ErrFileTooLarge = errors.New("file too large")
+
+// ErrInvalidFileSize indicates the declared upload size is missing or invalid.
+var ErrInvalidFileSize = errors.New("file_size must be positive")
 
 // ErrTaskNotFound indicates the parse task was not found.
 var ErrTaskNotFound = errors.New("task not found")
@@ -64,12 +85,15 @@ func (s *Service) InitUpload(ctx context.Context, fileName string, fileSize int6
 		return nil, ErrInvalidFileName
 	}
 	maxBytes := int64(s.maxMB) * 1024 * 1024
+	if fileSize <= 0 {
+		return nil, ErrInvalidFileSize
+	}
 	if fileSize > maxBytes {
 		return nil, ErrFileTooLarge
 	}
 
 	uploadID := s.idGen()
-	objectKey := fmt.Sprintf("skills/%s/%s", uploadID, fileName)
+	objectKey := fmt.Sprintf("skill-uploads/%s/%s", uploadID, fileName)
 
 	url, headers, err := s.store.PresignPut(ctx, objectKey, "application/zip", time.Hour)
 	if err != nil {
@@ -115,12 +139,15 @@ func (s *Service) InitReupload(ctx context.Context, skillID, fileName string, fi
 		return nil, ErrInvalidFileName
 	}
 	maxBytes := int64(s.maxMB) * 1024 * 1024
+	if fileSize <= 0 {
+		return nil, ErrInvalidFileSize
+	}
 	if fileSize > maxBytes {
 		return nil, ErrFileTooLarge
 	}
 
 	uploadID := s.idGen()
-	objectKey := fmt.Sprintf("skills/%s/%s", uploadID, fileName)
+	objectKey := fmt.Sprintf("skill-uploads/%s/%s", uploadID, fileName)
 
 	url, headers, err := s.store.PresignPut(ctx, objectKey, "application/zip", time.Hour)
 	if err != nil {
@@ -186,17 +213,77 @@ func (s *Service) TriggerParse(ctx context.Context, uploadID, ownerID string) (s
 
 	// Submit to worker pool
 	maxBytes := int64(s.maxMB) * 1024 * 1024
-	s.worker.Submit(task.ID, task.FileURL, maxBytes)
+	if err := s.worker.Submit(task.ID, task.FileURL, maxBytes); err != nil {
+		if errors.Is(err, ErrParseQueueFull) {
+			restored, restoreErr := s.repo.RestoreParsingToPending(ctx, task.ID)
+			if restoreErr != nil {
+				return "", restoreErr
+			}
+			if !restored {
+				return "", ErrTaskNotPending
+			}
+		}
+		return "", err
+	}
 
 	return task.ID, nil
 }
 
+// ParseUploadSync starts parsing a previously initialized upload and waits for
+// the parse worker to finish. It is used by bot publish flows after the bot has
+// uploaded the archive to the presigned URL.
+func (s *Service) ParseUploadSync(ctx context.Context, uploadID, ownerID string) (*PollResult, error) {
+	task, err := s.repo.GetByUploadID(ctx, uploadID)
+	if err != nil {
+		return nil, err
+	}
+	if task == nil {
+		return nil, ErrTaskNotFound
+	}
+	if task.OwnerID != ownerID {
+		return nil, ErrForbidden
+	}
+	if task.Status == "success" {
+		return s.GetParseStatus(ctx, task.ID, ownerID)
+	}
+	if task.Status != "pending" {
+		return nil, ErrTaskNotPending
+	}
+
+	ok, err := s.repo.TransitionPendingToParsing(ctx, task.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrTaskNotPending
+	}
+
+	maxBytes := int64(s.maxMB) * 1024 * 1024
+	if err := s.worker.ProcessSync(ctx, task.ID, task.FileURL, maxBytes); err != nil {
+		return nil, err
+	}
+	result, err := s.GetParseStatus(ctx, task.ID, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	if result.Status == "parsing" {
+		_ = s.repo.UpdateFailed(ctx, task.ID, "INTERNAL_ERROR", publicParseErrorMessage("INTERNAL_ERROR"))
+		return nil, ErrParseIncomplete
+	}
+	return result, nil
+}
+
 func normalizeUploadFileName(fileName string) (string, error) {
 	fileName = strings.TrimSpace(fileName)
-	if !strings.HasSuffix(strings.ToLower(fileName), ".zip") {
+	if !isSupportedSkillPackageName(fileName) {
 		return "", ErrInvalidFileName
 	}
 	return normalizeObjectFileName(fileName)
+}
+
+func isSupportedSkillPackageName(fileName string) bool {
+	lower := strings.ToLower(fileName)
+	return strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".skill")
 }
 
 func normalizeObjectFileName(fileName string) (string, error) {
@@ -236,6 +323,9 @@ type ParseError struct {
 }
 
 // GetParseStatus polls the parse task status.
+// When the task is stuck in 'parsing' beyond staleTimeout, it attempts atomic
+// recovery: claiming the task via TryRecoverStaleParsing and re-submitting to
+// the worker pool. If max attempts are exceeded, it marks the task as failed.
 func (s *Service) GetParseStatus(ctx context.Context, taskID, ownerID string) (*PollResult, error) {
 	task, err := s.repo.GetByID(ctx, taskID)
 	if err != nil {
@@ -283,7 +373,56 @@ func (s *Service) GetParseStatus(ctx context.Context, taskID, ownerID string) (*
 	case "failed":
 		result.Error = &ParseError{
 			Code:    task.ErrorCode,
-			Message: publicParseErrorMessage(task.ErrorCode),
+			Message: publicParseErrorMessageWithDetail(task.ErrorCode, task.ErrorMessage),
+		}
+	case "parsing":
+		// Check if the task is stale and attempt recovery.
+		staleCutoff := time.Now().Add(-s.staleTimeout)
+		if task.UpdatedAt.Before(staleCutoff) {
+			// Task appears stale — attempt atomic recovery.
+			if task.Attempts >= s.maxAttempts {
+				// Exhausted retries; mark as failed.
+				_ = s.repo.MarkRetryExhausted(ctx, task.ID)
+				result.Status = "failed"
+				result.Error = &ParseError{
+					Code:    "PARSE_RETRY_EXHAUSTED",
+					Message: publicParseErrorMessage("PARSE_RETRY_EXHAUSTED"),
+				}
+				return result, nil
+			}
+
+			staleSeconds := int(s.staleTimeout.Seconds())
+			won, err := s.repo.TryRecoverStaleParsing(ctx, task.ID, staleSeconds, s.maxAttempts)
+			if err != nil {
+				// Recovery SQL failed — return current parsing status.
+				return result, nil
+			}
+			if won {
+				// This pod won the race — re-submit to the worker pool.
+				maxBytes := int64(s.maxMB) * 1024 * 1024
+				if task.Attempts+1 >= s.maxAttempts {
+					if err := s.worker.ProcessSync(ctx, task.ID, task.FileURL, maxBytes); err != nil {
+						_ = s.repo.MarkRetryExhausted(ctx, task.ID)
+						result.Status = "failed"
+						result.Error = &ParseError{
+							Code:    "PARSE_RETRY_EXHAUSTED",
+							Message: publicParseErrorMessage("PARSE_RETRY_EXHAUSTED"),
+						}
+						return result, nil
+					}
+					return s.GetParseStatus(ctx, task.ID, ownerID)
+				}
+				if err := s.worker.Submit(task.ID, task.FileURL, maxBytes); err != nil {
+					_ = s.repo.UpdateFailed(ctx, task.ID, "PARSE_QUEUE_FULL", publicParseErrorMessage("PARSE_QUEUE_FULL"))
+					result.Status = "failed"
+					result.Error = &ParseError{
+						Code:    "PARSE_QUEUE_FULL",
+						Message: publicParseErrorMessage("PARSE_QUEUE_FULL"),
+					}
+					return result, nil
+				}
+			}
+			// Either way, status is still parsing (recovery just kicked off).
 		}
 	}
 
@@ -307,28 +446,23 @@ type IconUploadResult struct {
 // InitIconUpload generates a presigned URL for uploading a skill icon image.
 func (s *Service) InitIconUpload(ctx context.Context, fileName string, fileSize int64, ownerID string) (*IconUploadResult, error) {
 	fileName = strings.TrimSpace(fileName)
-	// Validate image extension
-	lower := strings.ToLower(fileName)
-	if !strings.HasSuffix(lower, ".png") && !strings.HasSuffix(lower, ".jpg") && !strings.HasSuffix(lower, ".jpeg") && !strings.HasSuffix(lower, ".svg") {
-		return nil, errors.New("file must be an image (png/jpg/jpeg/svg)")
+	contentType, ok := safeIconContentType(fileName)
+	if !ok {
+		return nil, errors.New("file must be an image (png/jpg/jpeg/webp/gif)")
 	}
 	if _, err := normalizeObjectFileName(fileName); err != nil {
 		return nil, ErrInvalidFileName
 	}
 	// Limit icon to 2MB
+	if fileSize <= 0 {
+		return nil, ErrInvalidFileSize
+	}
 	if fileSize > 2*1024*1024 {
 		return nil, ErrFileTooLarge
 	}
 
 	id := s.idGen()
 	objectKey := fmt.Sprintf("icons/%s/%s", id, fileName)
-
-	contentType := "image/png"
-	if strings.HasSuffix(lower, ".jpg") || strings.HasSuffix(lower, ".jpeg") {
-		contentType = "image/jpeg"
-	} else if strings.HasSuffix(lower, ".svg") {
-		contentType = "image/svg+xml"
-	}
 
 	iconTTL := time.Hour
 	url, headers, err := s.store.PresignPut(ctx, objectKey, contentType, iconTTL)
@@ -375,16 +509,15 @@ func (s *Service) GetDownloadURL(ctx context.Context, objectKey string) (string,
 // an admin (no user identity) — we don't tie the object key to a subject.
 func (s *Service) InitMcpIconUpload(ctx context.Context, fileName string, fileSize int64) (*IconUploadResult, error) {
 	fileName = strings.TrimSpace(fileName)
-	lower := strings.ToLower(fileName)
-	if !strings.HasSuffix(lower, ".png") &&
-		!strings.HasSuffix(lower, ".jpg") &&
-		!strings.HasSuffix(lower, ".jpeg") &&
-		!strings.HasSuffix(lower, ".webp") &&
-		!strings.HasSuffix(lower, ".gif") {
+	contentType, ok := safeIconContentType(fileName)
+	if !ok {
 		return nil, errors.New("file must be an image (png/jpg/jpeg/webp/gif)")
 	}
 	if _, err := normalizeObjectFileName(fileName); err != nil {
 		return nil, ErrInvalidFileName
+	}
+	if fileSize <= 0 {
+		return nil, ErrInvalidFileSize
 	}
 	if fileSize > 2*1024*1024 {
 		return nil, ErrFileTooLarge
@@ -392,16 +525,6 @@ func (s *Service) InitMcpIconUpload(ctx context.Context, fileName string, fileSi
 
 	id := s.idGen()
 	objectKey := fmt.Sprintf("mcp-icons/%s/%s", id, fileName)
-
-	contentType := "image/png"
-	switch {
-	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
-		contentType = "image/jpeg"
-	case strings.HasSuffix(lower, ".webp"):
-		contentType = "image/webp"
-	case strings.HasSuffix(lower, ".gif"):
-		contentType = "image/gif"
-	}
 
 	iconTTL := time.Hour
 	putURL, headers, err := s.store.PresignPut(ctx, objectKey, contentType, iconTTL)
@@ -430,4 +553,19 @@ func (s *Service) InitMcpIconUpload(ctx context.Context, fileName string, fileSi
 		Headers:      headerMap,
 		DownloadURL:  downloadURL,
 	}, nil
+}
+
+func safeIconContentType(fileName string) (string, bool) {
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".png":
+		return "image/png", true
+	case ".jpg", ".jpeg":
+		return "image/jpeg", true
+	case ".webp":
+		return "image/webp", true
+	case ".gif":
+		return "image/gif", true
+	default:
+		return "", false
+	}
 }

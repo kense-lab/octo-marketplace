@@ -3,22 +3,32 @@ package parse
 func publicParseErrorMessage(errorCode string) string {
 	switch errorCode {
 	case "INTERNAL_ERROR":
-		return "解析任务执行失败，请稍后重试"
+		return "Skill parse failed. Please retry later."
 	case "INVALID_ZIP":
-		return "上传文件不是有效的 ZIP 压缩包"
+		return "Uploaded file is not a valid ZIP archive."
 	case "FILE_TOO_LARGE":
-		return "上传文件超过大小限制"
+		return "Uploaded file exceeds the size limit."
 	case "SKILL_MD_TOO_LARGE":
-		return "SKILL.md 超过大小限制"
+		return "SKILL.md exceeds the size limit."
 	case "SKILL_MD_NOT_FOUND":
-		return "压缩包中缺少 SKILL.md"
+		return "SKILL.md was not found in the archive."
 	case "ZIP_SLIP_DETECTED":
-		return "压缩包包含不安全的文件路径"
+		return "Archive contains an unsafe file path."
 	case "INVALID_SKILL_MD":
-		return "SKILL.md 内容不符合要求"
+		return "SKILL.md is invalid."
+	case "SKILL_NAME_MISMATCH":
+		return "Uploaded Skill does not match the target Skill."
 	case "DUPLICATE_NAME":
-		return "当前 Space 下已存在同名 Skill"
+		return "A Skill with the same name already exists in this Space."
+	case "PARSE_RETRY_EXHAUSTED":
+		return "Skill parse timed out after multiple attempts. Please upload again."
+	case "PARSE_QUEUE_FULL":
+		return "Parse queue is busy. Please retry later."
 	default:
-		return "解析失败"
+		return "Skill parse failed."
 	}
+}
+
+func publicParseErrorMessageWithDetail(errorCode, _ string) string {
+	return publicParseErrorMessage(errorCode)
 }

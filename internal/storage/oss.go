@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -16,27 +17,29 @@ import (
 
 // OSSStorage implements Storage using an S3-compatible object store (Aliyun OSS, MinIO, AWS S3, etc.).
 type OSSStorage struct {
-	client         *s3.Client
-	presignClient  *s3.Client
-	bucket         string
-	keyPrefix      string
-	publicEndpoint string
-	signingHost    string
-	downloadSigned bool
+	client          *s3.Client
+	presignClient   *s3.Client
+	bucket          string
+	keyPrefix       string
+	publicEndpoint  string
+	publicPathStyle bool
+	signingHost     string
+	downloadSigned  bool
 }
 
 // OSSConfig holds the configuration for S3-compatible storage.
 type OSSConfig struct {
-	Endpoint       string
-	Bucket         string
-	AccessKey      string
-	SecretKey      string
-	Region         string
-	KeyPrefix      string
-	PathStyle      bool
-	PublicEndpoint string
-	SigningHost    string
-	DownloadSigned bool
+	Endpoint        string
+	Bucket          string
+	AccessKey       string
+	SecretKey       string
+	Region          string
+	KeyPrefix       string
+	PathStyle       bool
+	PublicEndpoint  string
+	PublicPathStyle bool
+	SigningHost     string
+	DownloadSigned  bool
 }
 
 // NewOSS creates a Storage backed by an S3-compatible service.
@@ -59,23 +62,29 @@ func NewOSS(cfg OSSConfig) (*OSSStorage, error) {
 		UsePathStyle: cfg.PathStyle,
 	})
 
-	// Sign against the canonical storage endpoint. A browser-facing CDN host
-	// is substituted only after signing.
+	// Server-side operations always use the internal endpoint. Browser-side
+	// uploads must be signed for the host the browser will actually call,
+	// unless a CDN is explicitly configured to restore the origin Host header.
+	presignEndpoint := cfg.Endpoint
+	if cfg.PublicEndpoint != "" && strings.TrimSpace(cfg.SigningHost) == "" {
+		presignEndpoint = cfg.PublicEndpoint
+	}
 	presignCli := s3.New(s3.Options{
-		BaseEndpoint: aws.String(cfg.Endpoint),
+		BaseEndpoint: aws.String(presignEndpoint),
 		Region:       region,
 		Credentials:  creds,
 		UsePathStyle: cfg.PathStyle,
 	})
 
 	return &OSSStorage{
-		client:         client,
-		presignClient:  presignCli,
-		bucket:         cfg.Bucket,
-		keyPrefix:      strings.Trim(cfg.KeyPrefix, "/"),
-		publicEndpoint: strings.TrimRight(cfg.PublicEndpoint, "/"),
-		signingHost:    strings.TrimSpace(cfg.SigningHost),
-		downloadSigned: cfg.DownloadSigned,
+		client:          client,
+		presignClient:   presignCli,
+		bucket:          cfg.Bucket,
+		keyPrefix:       strings.Trim(cfg.KeyPrefix, "/"),
+		publicEndpoint:  strings.TrimRight(cfg.PublicEndpoint, "/"),
+		publicPathStyle: cfg.PublicPathStyle,
+		signingHost:     strings.TrimSpace(cfg.SigningHost),
+		downloadSigned:  cfg.DownloadSigned,
 	}, nil
 }
 
@@ -124,6 +133,22 @@ func (s *OSSStorage) PresignGet(ctx context.Context, key string, expires time.Du
 	return s.publicPresignedURL(result.URL)
 }
 
+// StatObject returns object metadata from the backing object store.
+func (s *OSSStorage) StatObject(ctx context.Context, key string) (ObjectInfo, error) {
+	output, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(s.key(key)),
+	})
+	if err != nil {
+		return ObjectInfo{}, fmt.Errorf("oss stat object: %w", err)
+	}
+	size := int64(0)
+	if output.ContentLength != nil {
+		size = *output.ContentLength
+	}
+	return ObjectInfo{Size: size}, nil
+}
+
 // GetObject downloads an object from storage (uses internal endpoint).
 func (s *OSSStorage) GetObject(ctx context.Context, key string) (io.ReadCloser, error) {
 	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
@@ -134,6 +159,24 @@ func (s *OSSStorage) GetObject(ctx context.Context, key string) (io.ReadCloser, 
 		return nil, fmt.Errorf("oss get object: %w", err)
 	}
 	return output.Body, nil
+}
+
+// PutObject uploads an object to storage from a reader.
+func (s *OSSStorage) PutObject(ctx context.Context, key string, reader io.Reader, size int64, contentType string) error {
+	input := &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(s.key(key)),
+		Body:          reader,
+		ContentLength: aws.Int64(size),
+	}
+	if contentType != "" {
+		input.ContentType = aws.String(contentType)
+	}
+	_, err := s.client.PutObject(ctx, input)
+	if err != nil {
+		return fmt.Errorf("oss put object: %w", err)
+	}
+	return nil
 }
 
 // DeleteObject removes an object from storage.
@@ -171,7 +214,7 @@ func (s *OSSStorage) PublicURL(_ context.Context, key string) (string, error) {
 	if s.publicEndpoint == "" {
 		return "", fmt.Errorf("OSS_PUBLIC_ENDPOINT not configured; cannot construct a persistent public URL")
 	}
-	return fmt.Sprintf("%s/%s", s.publicEndpoint, s.key(key)), nil
+	return s.publicObjectURL(key)
 }
 
 func (s *OSSStorage) key(key string) string {
@@ -187,7 +230,11 @@ func (s *OSSStorage) publicObjectURL(key string) (string, error) {
 	if err != nil || public.Scheme == "" || public.Host == "" {
 		return "", fmt.Errorf("invalid OSS_PUBLIC_ENDPOINT %q", s.publicEndpoint)
 	}
-	public.Path = strings.TrimRight(public.Path, "/") + "/" + strings.TrimLeft(s.key(key), "/")
+	objectPath := strings.TrimLeft(s.key(key), "/")
+	if s.publicPathStyle {
+		objectPath = strings.Trim(s.bucket, "/") + "/" + objectPath
+	}
+	public.Path = path.Join(public.Path, objectPath)
 	public.RawPath = ""
 	public.RawQuery = ""
 	public.Fragment = ""

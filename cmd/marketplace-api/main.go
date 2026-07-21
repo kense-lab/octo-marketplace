@@ -18,8 +18,11 @@ import (
 	"github.com/Mininglamp-OSS/octo-marketplace/internal/middleware"
 	"github.com/Mininglamp-OSS/octo-marketplace/internal/model"
 	"github.com/Mininglamp-OSS/octo-marketplace/internal/repository"
+	metricsrepo "github.com/Mininglamp-OSS/octo-marketplace/internal/repository/metrics"
 	"github.com/Mininglamp-OSS/octo-marketplace/internal/service"
+	metricssvc "github.com/Mininglamp-OSS/octo-marketplace/internal/service/metrics"
 	"github.com/gin-gonic/gin"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 // @title Octo Marketplace API
@@ -34,13 +37,21 @@ import (
 // @tag.description Skill artifact ingestion and parsing
 // @tag.name skill_category
 // @tag.description Skill catalog categories
+// @tag.name admin_skill
+// @tag.description Administrative Skill catalog
 // @tag.name mcp
 // @tag.description MCP server catalog
 // @tag.name admin_mcp
 // @tag.description Administrative MCP catalog
-// @securityDefinitions.apikey Bearer
+// @tag.name session
+// @tag.description Current authenticated user context
+// @tag.name metrics
+// @tag.description Marketplace interaction metrics
+// @securityDefinitions.bearerauth Bearer
+
+// @securityDefinitions.apikey AdminToken
 // @in header
-// @name Authorization
+// @name X-Admin-Token
 
 func main() {
 	gin.SetMode(gin.ReleaseMode)
@@ -105,6 +116,38 @@ func main() {
 	}
 	mcpHandler := handler.NewMCP(mcpSvc)
 	adminMCPHandler := handler.NewAdminMCP(mcpSvc)
+	devBotMode := !cfg.AuthEnabled && cfg.IsDev()
+	if devBotMode {
+		log.Printf("[bot-publish] WARNING: dev bot mode enabled; this must not be active outside local development")
+	}
+
+	// Start flush worker if Redis is configured.
+	flushCtx, flushCancel := context.WithCancel(context.Background())
+	defer flushCancel()
+	var metricsRDB *goredis.Client
+	if cfg.RedisURL != "" {
+		opts, err := goredis.ParseURL(cfg.RedisURL)
+		if err == nil {
+			metricsRDB = goredis.NewClient(opts)
+			defer func() {
+				if err := metricsRDB.Close(); err != nil {
+					log.Printf("[redis] close failed: %v", err)
+				}
+			}()
+			mRepo := metricsrepo.New(database)
+			flushCfg := metricssvc.DefaultFlushWorkerConfig()
+			flushCfg.Interval = cfg.MetricsFlushInterval
+			flushCfg.Batch = int64(cfg.MetricsFlushBatch)
+			flushCfg.LockTTL = cfg.MetricsFlushLockTTL
+			fw := metricssvc.NewFlushWorker(metricsRDB, mRepo, flushCfg)
+			go fw.Start(flushCtx)
+			log.Printf("[flush-worker] enabled (interval=%s)", cfg.MetricsFlushInterval)
+		} else {
+			log.Printf("[flush-worker] disabled: invalid REDIS_URL: %v", err)
+		}
+	} else {
+		log.Printf("[flush-worker] disabled: REDIS_URL not set")
+	}
 
 	publicServer := &http.Server{
 		Addr: ":" + cfg.APIPort,
@@ -121,10 +164,18 @@ func main() {
 			OSSKeyPrefix:       cfg.OSSKeyPrefix,
 			OSSPathStyle:       cfg.OSSPathStyle,
 			OSSPublicEndpoint:  cfg.OSSPublicEndpoint,
+			OSSPublicPathStyle: cfg.OSSPublicPathStyle,
 			OSSSigningHost:     cfg.OSSSigningHost,
 			OSSDownloadSigned:  cfg.OSSDownloadSigned,
 			CORSAllowedOrigins: cfg.CORSAllowedOrigins,
-		}, mcpHandler, adminMCPHandler),
+		}, mcpHandler, adminMCPHandler, router.ParseConfig{
+			ParseTimeout:      cfg.SkillParseTimeout,
+			StaleTimeout:      cfg.SkillParseStaleTimeout,
+			MaxAttempts:       cfg.SkillParseMaxAttempts,
+			WorkerPoolSize:    cfg.SkillParseWorkerPoolSize,
+			BotPublishTimeout: cfg.BotPublishTimeout,
+			DevBotMode:        devBotMode,
+		}, router.RedisConfig{Client: metricsRDB}),
 		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
 		ReadTimeout:       cfg.ReadTimeout,
 		WriteTimeout:      cfg.WriteTimeout,
@@ -135,6 +186,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
+	flushCancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = publicServer.Shutdown(ctx)

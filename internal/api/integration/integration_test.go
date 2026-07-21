@@ -75,18 +75,38 @@ func parseBody(t *testing.T, w *httptest.ResponseRecorder) map[string]interface{
 	return result
 }
 
-var skillCols = []string{"id", "name", "display_name", "icon_url", "description", "category_id", "tags",
+var skillCols = []string{"id", "name", "display_name", "icon_url", "source_skill_id", "current_version_id",
+	"description", "category_id", "tags",
 	"owner_id", "owner_name", "space_id", "visibility", "version",
 	"readme_content", "file_name", "file_url", "file_size", "file_sha256",
-	"created_at", "updated_at"}
+	"created_at", "updated_at", "resolved_version", "version_storage", "view_count", "download_count"}
+
+// skillListCols is the column set for List queries (includes version_storage and metrics).
+var skillListCols = []string{"id", "name", "display_name", "icon_url", "source_skill_id", "current_version_id",
+	"description", "category_id", "tags",
+	"owner_id", "owner_name", "space_id", "visibility", "version",
+	"readme_content", "file_name", "file_url", "file_size", "file_sha256",
+	"created_at", "updated_at", "resolved_version", "version_storage", "view_count", "download_count"}
 
 func skillRow(id, name, ownerID, ownerName, spaceID, visibility string) *sqlmock.Rows {
 	now := time.Now().UTC()
 	return sqlmock.NewRows(skillCols).AddRow(
-		id, name, name, "", "description", "cat-1", []byte(`[]`),
+		id, name, name, "", "", "",
+		"description", "cat-1", []byte(`[]`),
 		ownerID, ownerName, spaceID, visibility, "1.0.0",
 		"readme", "file.zip", fmt.Sprintf("skills/%s/v1.0.0/file.zip", id), int64(1024), "sha256",
-		now, now,
+		now, now, "1.0.0", "", int64(0), int64(0),
+	)
+}
+
+func skillListRow(id, name, ownerID, ownerName, spaceID, visibility string) *sqlmock.Rows {
+	now := time.Now().UTC()
+	return sqlmock.NewRows(skillListCols).AddRow(
+		id, name, name, "", "", "",
+		"description", "cat-1", []byte(`[]`),
+		ownerID, ownerName, spaceID, visibility, "1.0.0",
+		"readme", "file.zip", fmt.Sprintf("skills/%s/v1.0.0/file.zip", id), int64(1024), "sha256",
+		now, now, "1.0.0", "", int64(0), int64(0),
 	)
 }
 
@@ -168,7 +188,7 @@ func TestAdminDeleteCategoryEmpty(t *testing.T) {
 
 	mock.ExpectQuery("SELECT COUNT").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-	mock.ExpectExec("DELETE FROM categories").
+	mock.ExpectExec("UPDATE categories").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	w := doRequest(engine, "DELETE", "/api/v1/skill/admin/categories/cat-1", nil)
@@ -203,7 +223,7 @@ func TestAdminDeleteCategoryNotFound(t *testing.T) {
 
 	mock.ExpectQuery("SELECT COUNT").
 		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
-	mock.ExpectExec("DELETE FROM categories").
+	mock.ExpectExec("UPDATE categories").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	w := doRequest(engine, "DELETE", "/api/v1/skill/admin/categories/nonexist", nil)
@@ -234,14 +254,14 @@ func TestGetSkillVisibilityPublicCrossSpace(t *testing.T) {
 	engine, mock, db := testSetup(t)
 	defer db.Close()
 
-	// Public skill in another space - should return 404 (Space isolation)
+	// Public skill in another space should remain visible.
 	mock.ExpectQuery("SELECT .+ FROM skills").
 		WillReturnRows(skillRow("skill-1x", "Public Skill", "other-user", "Bob", "other-space", "public"))
 
 	w := doRequest(engine, "GET", "/api/v1/skill/skill-1x", nil)
 
-	if w.Code != http.StatusNotFound {
-		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusNotFound, w.Body.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
 	}
 }
 
@@ -332,14 +352,9 @@ func TestDeleteSkillOwner(t *testing.T) {
 
 	mock.ExpectQuery("SELECT .+ FROM skills").
 		WillReturnRows(skillRow("skill-6", "My Skill", "user-1", "Alice", "space-1", "space"))
-	mock.ExpectBegin()
-	mock.ExpectExec("DELETE FROM skill_versions").
+	mock.ExpectExec("UPDATE skills").
 		WithArgs("skill-6").
 		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("DELETE FROM skills").
-		WithArgs("skill-6").
-		WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
 
 	w := doRequest(engine, "DELETE", "/api/v1/skill/skill-6", nil)
 
@@ -373,15 +388,18 @@ func TestUpdateSkillOwner(t *testing.T) {
 	mock.ExpectQuery("SELECT .+ FROM skills").
 		WillReturnRows(skillRow("skill-8", "My Skill", "user-1", "Alice", "space-1", "space"))
 	// Update
+	mock.ExpectBegin()
 	mock.ExpectExec("UPDATE skills SET").
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 	// Re-fetch after update
 	mock.ExpectQuery("SELECT .+ FROM skills").
 		WillReturnRows(sqlmock.NewRows(skillCols).AddRow(
-			"skill-8", "Updated Skill", "Updated Skill", "", "new desc", "cat-1", []byte(`["updated"]`),
+			"skill-8", "Updated Skill", "Updated Skill", "", "", "",
+			"new desc", "cat-1", []byte(`["updated"]`),
 			"user-1", "Alice", "space-1", "space", "1.0.0",
 			"readme", "file.zip", "skills/skill-8/v1.0.0/file.zip", int64(1024), "sha256",
-			now, now,
+			now, now, "1.0.0", "", int64(0), int64(0),
 		))
 
 	w := doRequest(engine, "PUT", "/api/v1/skill/skill-8", map[string]interface{}{
@@ -401,14 +419,17 @@ func TestListSkills(t *testing.T) {
 	defer db.Close()
 
 	now := time.Now().UTC()
+	// Default sort preserves the historical latest cursor contract.
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(sqlmock.NewRows(skillCols).
-			AddRow("s1", "Skill 1", "Skill 1", "", "desc1", "cat-1", []byte(`[]`),
+		WillReturnRows(sqlmock.NewRows(skillListCols).
+			AddRow("s1", "Skill 1", "Skill 1", "", "", "",
+				"desc1", "cat-1", []byte(`[]`),
 				"user-1", "Alice", "space-1", "space", "1.0.0",
-				"", "f.zip", "url", int64(100), "sha", now, now).
-			AddRow("s2", "Skill 2", "Skill 2", "", "desc2", "cat-1", []byte(`[]`),
+				"", "f.zip", "url", int64(100), "sha", now, now, "1.0.0", "", int64(0), int64(0)).
+			AddRow("s2", "Skill 2", "Skill 2", "", "", "",
+				"desc2", "cat-1", []byte(`[]`),
 				"user-2", "Bob", "space-1", "public", "1.0.0",
-				"", "f.zip", "url", int64(200), "sha", now, now))
+				"", "f.zip", "url", int64(200), "sha", now, now, "1.0.0", "", int64(0), int64(0)))
 
 	w := doRequest(engine, "GET", "/api/v1/skill", nil)
 
@@ -427,9 +448,9 @@ func TestListSkillsWithCategoryFilter(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(skillRow("s1", "Filtered", "user-1", "Alice", "space-1", "space"))
+		WillReturnRows(skillListRow("s1", "Filtered", "user-1", "Alice", "space-1", "space"))
 
-	w := doRequest(engine, "GET", "/api/v1/skill?category_id=cat-1", nil)
+	w := doRequest(engine, "GET", "/api/v1/skill?category_id=cat-1&sort=comprehensive", nil)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
@@ -441,9 +462,9 @@ func TestListSkillsSearch(t *testing.T) {
 	defer db.Close()
 
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(sqlmock.NewRows(skillCols))
+		WillReturnRows(sqlmock.NewRows(skillListCols))
 
-	w := doRequest(engine, "GET", "/api/v1/skill?q=test", nil)
+	w := doRequest(engine, "GET", "/api/v1/skill?q=test&sort=comprehensive", nil)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
@@ -454,13 +475,82 @@ func TestListMine(t *testing.T) {
 	engine, mock, db := testSetup(t)
 	defer db.Close()
 
+	// ListMine uses SortLatest → cursor pagination (no COUNT query, uses limit+1)
 	mock.ExpectQuery("SELECT .+ FROM skills").
-		WillReturnRows(skillRow("s1", "My Skill", "user-1", "Alice", "space-1", "private"))
+		WillReturnRows(skillListRow("s1", "My Skill", "user-1", "Alice", "space-1", "private"))
 
 	w := doRequest(engine, "GET", "/api/v1/skill/mine", nil)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	// Verify it returns cursor pagination format
+	body := parseBody(t, w)
+	pagination := body["pagination"].(map[string]interface{})
+	if _, ok := pagination["has_more"]; !ok {
+		t.Error("expected cursor pagination with has_more field")
+	}
+}
+
+func TestListMineCursorPagination(t *testing.T) {
+	engine, mock, db := testSetup(t)
+	defer db.Close()
+
+	now := time.Now().UTC()
+	// Return limit+1 (21) items to trigger has_more=true with next_cursor
+	rows := sqlmock.NewRows(skillCols)
+	for i := range 21 {
+		rows.AddRow(
+			fmt.Sprintf("s%d", i), "Skill", "Skill", "", "", "",
+			"desc", "cat-1", []byte(`[]`),
+			"user-1", "Alice", "space-1", "private", "1.0.0",
+			"", "f.zip", "url", int64(100), "sha",
+			now.Add(-time.Duration(i)*time.Minute), now, "1.0.0", "", int64(0), int64(0),
+		)
+	}
+	mock.ExpectQuery("SELECT .+ FROM skills").
+		WillReturnRows(rows)
+
+	w := doRequest(engine, "GET", "/api/v1/skill/mine", nil)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	body := parseBody(t, w)
+	items := body["data"].([]interface{})
+	if len(items) != 20 {
+		t.Errorf("expected 20 items, got %d", len(items))
+	}
+	pagination := body["pagination"].(map[string]interface{})
+	if pagination["has_more"] != true {
+		t.Error("expected has_more=true when more results exist")
+	}
+	if pagination["next_cursor"] == nil || pagination["next_cursor"] == "" {
+		t.Error("expected non-empty next_cursor")
+	}
+}
+
+func TestListSkillTags(t *testing.T) {
+	engine, mock, db := testSetup(t)
+	defer db.Close()
+
+	now := time.Now().UTC()
+	mock.ExpectQuery("SELECT ranked\\.id, ranked\\.space_id, ranked\\.name").
+		WithArgs("space-1", "space-1", "", "%auto%", 10).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "space_id", "name", "created_by", "created_at", "updated_at"}).
+			AddRow(int64(1), "space-1", "automation", "user-2", now, now).
+			AddRow(int64(2), "", "auto-global", "admin", now, now))
+
+	w := doRequest(engine, "GET", "/api/v1/skill/tags?q=auto&limit=10", nil)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
+	}
+	body := parseBody(t, w)
+	data := body["data"].(map[string]interface{})
+	items := data["items"].([]interface{})
+	if len(items) != 2 || items[0].(map[string]interface{})["name"] != "automation" || items[1].(map[string]interface{})["name"] != "auto-global" {
+		t.Fatalf("unexpected items: %#v", items)
 	}
 }
 
@@ -500,24 +590,28 @@ func TestInitUploadInvalidFileName(t *testing.T) {
 }
 
 func TestInitUploadHappyPath(t *testing.T) {
-	engine, mock, db := testSetup(t)
-	defer db.Close()
+	for _, fileName := range []string{"my-skill.zip", "my-skill.skill"} {
+		t.Run(fileName, func(t *testing.T) {
+			engine, mock, db := testSetup(t)
+			defer db.Close()
 
-	mock.ExpectExec("INSERT INTO parse_tasks").
-		WillReturnResult(sqlmock.NewResult(1, 1))
+			mock.ExpectExec("INSERT INTO parse_tasks").
+				WillReturnResult(sqlmock.NewResult(1, 1))
 
-	w := doRequest(engine, "POST", "/api/v1/skill/upload/init", map[string]interface{}{
-		"file_name": "my-skill.zip",
-		"file_size": 5120,
-	})
+			w := doRequest(engine, "POST", "/api/v1/skill/upload/init", map[string]interface{}{
+				"file_name": fileName,
+				"file_size": 5120,
+			})
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
-	}
-	body := parseBody(t, w)
-	data := body["data"].(map[string]interface{})
-	if data["skill_upload_id"] == nil || data["skill_upload_id"] == "" {
-		t.Error("expected skill_upload_id in response")
+			if w.Code != http.StatusOK {
+				t.Fatalf("status=%d want=%d body=%s", w.Code, http.StatusOK, w.Body.String())
+			}
+			body := parseBody(t, w)
+			data := body["data"].(map[string]interface{})
+			if data["skill_upload_id"] == nil || data["skill_upload_id"] == "" {
+				t.Error("expected skill_upload_id in response")
+			}
+		})
 	}
 }
 
@@ -580,10 +674,11 @@ func TestDownloadSkillRedirect(t *testing.T) {
 	now := time.Now().UTC()
 	mock.ExpectQuery("SELECT .+ FROM skills").
 		WillReturnRows(sqlmock.NewRows(skillCols).AddRow(
-			"skill-dl", "Download Skill", "Download Skill", "", "desc", "cat-1", []byte(`[]`),
+			"skill-dl", "Download Skill", "Download Skill", "", "", "",
+			"desc", "cat-1", []byte(`[]`),
 			"user-1", "Alice", "space-1", "space", "1.0.0",
 			"", "file.zip", fileKey, int64(1024), "sha",
-			now, now,
+			now, now, "1.0.0", "", int64(0), int64(0),
 		))
 
 	w := doRequest(engine, "GET", "/api/v1/skill/skill-dl/download", nil)
@@ -619,9 +714,10 @@ func TestDownloadSkillJSON(t *testing.T) {
 	now := time.Now().UTC()
 	mock.ExpectQuery("SELECT .+ FROM skills").
 		WillReturnRows(sqlmock.NewRows(skillCols).AddRow(
-			"skill-dl-json", "Download Skill", "Download Skill", "", "desc", "cat-1", []byte(`[]`),
+			"skill-dl-json", "Download Skill", "Download Skill", "", "", "",
+			"desc", "cat-1", []byte(`[]`),
 			"user-1", "Alice", "space-1", "space", "1.0.0",
-			"", "file.zip", fileKey, int64(1024), "sha", now, now,
+			"", "file.zip", fileKey, int64(1024), "sha", now, now, "1.0.0", "", int64(0), int64(0),
 		))
 
 	w := doRequest(engine, "GET", "/api/v1/skills/skill-dl-json/download?format=json", nil)

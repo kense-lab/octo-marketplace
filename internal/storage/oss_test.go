@@ -96,6 +96,86 @@ func TestCOSDownloadCanUseSignedCDNURL(t *testing.T) {
 	}
 }
 
+func TestPresignPutUsesPublicEndpointWhenNoSigningHost(t *testing.T) {
+	s, err := NewOSS(OSSConfig{
+		Endpoint:        "http://minio:9000",
+		Region:          "us-east-1",
+		Bucket:          "octo-marketplace",
+		AccessKey:       "test-access-key",
+		SecretKey:       "test-secret-key",
+		PathStyle:       true,
+		PublicEndpoint:  "http://127.0.0.1:29000",
+		PublicPathStyle: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, headers, err := s.PresignPut(context.Background(), "skills/demo.zip", "application/zip", 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(raw)
+	if u.Host != "127.0.0.1:29000" {
+		t.Fatalf("host=%q", u.Host)
+	}
+	if u.Path != "/octo-marketplace/skills/demo.zip" {
+		t.Fatalf("path=%q", u.Path)
+	}
+	if u.Query().Get("X-Amz-Signature") == "" {
+		t.Fatalf("missing signature: %s", raw)
+	}
+	if headers.Get("Content-Type") != "application/zip" {
+		t.Fatalf("content-type header=%q", headers.Get("Content-Type"))
+	}
+}
+
+func TestMinIOPublicDownloadUsesPathStyleBucketURL(t *testing.T) {
+	s, err := NewOSS(OSSConfig{
+		Endpoint:        "http://minio:9000",
+		Region:          "us-east-1",
+		Bucket:          "octo-marketplace",
+		AccessKey:       "test-access-key",
+		SecretKey:       "test-secret-key",
+		PathStyle:       true,
+		PublicEndpoint:  "http://127.0.0.1:29000",
+		PublicPathStyle: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := s.PresignGet(context.Background(), "skills/demo.zip", 10*time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, _ := url.Parse(raw)
+	if u.Host != "127.0.0.1:29000" {
+		t.Fatalf("host=%q", u.Host)
+	}
+	if u.Path != "/octo-marketplace/skills/demo.zip" {
+		t.Fatalf("path=%q", u.Path)
+	}
+	if u.RawQuery != "" {
+		t.Fatalf("download URL must not be signed: %s", raw)
+	}
+}
+
+func TestPublicObjectURLEscapesPathStyleSegments(t *testing.T) {
+	s := &OSSStorage{
+		bucket:          "octo marketplace",
+		keyPrefix:       "prefix with space",
+		publicEndpoint:  "https://cdn.example.com/base path",
+		publicPathStyle: true,
+	}
+	raw, err := s.PublicURL(context.Background(), "skills/demo #1.zip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(raw, "/base%20path/octo%20marketplace/prefix%20with%20space/skills/demo%20%231.zip") {
+		t.Fatalf("public URL did not escape path segments: %s", raw)
+	}
+}
+
 func TestPublicPresignedURLRewritesOnlyOrigin(t *testing.T) {
 	s := &OSSStorage{
 		publicEndpoint: "https://cdn.example.com",

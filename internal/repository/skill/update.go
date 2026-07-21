@@ -11,19 +11,21 @@ import (
 
 // UpdateParams holds optional fields to update.
 type UpdateParams struct {
-	Name          *string
-	DisplayName   *string
-	IconURL       *string
-	Description   *string
-	CategoryID    *string
-	Tags          json.RawMessage // nil means no change
-	Visibility    *model.Visibility
-	Version       *string
-	ReadmeContent *string
-	FileName      *string
-	FileURL       *string
-	FileSize      *int64
-	FileSHA256    *string
+	Name             *string
+	DisplayName      *string
+	IconURL          *string
+	Description      *string
+	CategoryID       *string
+	Tags             json.RawMessage // nil means no change
+	Visibility       *model.Visibility
+	Version          *string
+	ReadmeContent    *string
+	FileName         *string
+	FileURL          *string
+	FileSize         *int64
+	FileSHA256       *string
+	CurrentVersionID *string
+	TagNames         []string
 }
 
 // buildUpdateSets constructs the SET clause parts and args for an UPDATE query.
@@ -83,6 +85,10 @@ func buildUpdateSets(p UpdateParams) ([]string, []interface{}) {
 		sets = append(sets, "file_sha256 = ?")
 		args = append(args, *p.FileSHA256)
 	}
+	if p.CurrentVersionID != nil {
+		sets = append(sets, "current_version_id = ?")
+		args = append(args, *p.CurrentVersionID)
+	}
 
 	return sets, args
 }
@@ -99,7 +105,7 @@ func (r *Repo) Update(ctx context.Context, id string, p UpdateParams) (int64, er
 		return 0, nil
 	}
 
-	query := fmt.Sprintf("UPDATE skills SET %s WHERE id = ?", strings.Join(sets, ", "))
+	query := fmt.Sprintf("UPDATE skills SET %s WHERE id = ? AND is_deleted = 0", strings.Join(sets, ", "))
 	args = append(args, id)
 
 	result, err := r.db.ExecContext(ctx, query, args...)
@@ -107,4 +113,56 @@ func (r *Repo) Update(ctx context.Context, id string, p UpdateParams) (int64, er
 		return 0, mapDuplicateName(err)
 	}
 	return result.RowsAffected()
+}
+
+// UpdateWithTags updates a skill and syncs newly introduced tags into the
+// Space-level tag index in one transaction.
+func (r *Repo) UpdateWithTags(ctx context.Context, id, spaceID, ownerID string, p UpdateParams) (int64, error) {
+	return r.UpdateWithTagsScoped(ctx, id, spaceID, ownerID, spaceID, ownerID, p)
+}
+
+// UpdateWithTagsScoped updates a skill using the skill row's ownership scope,
+// while allowing callers such as admin flows to sync tags into a different tag
+// bucket.
+func (r *Repo) UpdateWithTagsScoped(ctx context.Context, id, skillSpaceID, skillOwnerID, tagSpaceID, tagCreatedBy string, p UpdateParams) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	if p.Tags != nil {
+		tagIDs, err := resolveOrCreateTagIDs(ctx, tx, tagSpaceID, tagCreatedBy, p.TagNames)
+		if err != nil {
+			return 0, err
+		}
+		tags, err := tagIDsToRaw(tagIDs)
+		if err != nil {
+			return 0, err
+		}
+		p.Tags = tags
+	}
+
+	sets, args := buildUpdateSets(p)
+	var affected int64
+	if len(sets) > 0 {
+		query := fmt.Sprintf("UPDATE skills SET %s WHERE id = ? AND owner_id = ? AND space_id = ? AND is_deleted = 0", strings.Join(sets, ", "))
+		args = append(args, id, skillOwnerID, skillSpaceID)
+
+		result, err := tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return 0, mapDuplicateName(err)
+		}
+		affected, err = result.RowsAffected()
+		if err != nil {
+			return 0, err
+		}
+		if affected == 0 {
+			return 0, ErrSkillNotFound
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return affected, nil
 }

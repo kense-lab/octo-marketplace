@@ -16,6 +16,15 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.ReadHeaderTimeout != 5*time.Second {
 		t.Fatalf("ReadHeaderTimeout=%v want=5s", cfg.ReadHeaderTimeout)
 	}
+	if cfg.WriteTimeout != DefaultHTTPWriteTimeout {
+		t.Fatalf("WriteTimeout=%v want=%v", cfg.WriteTimeout, DefaultHTTPWriteTimeout)
+	}
+	if cfg.BotPublishTimeout != DefaultBotPublishTimeout {
+		t.Fatalf("BotPublishTimeout=%v want=%v", cfg.BotPublishTimeout, DefaultBotPublishTimeout)
+	}
+	if cfg.WriteTimeout <= cfg.BotPublishTimeout {
+		t.Fatalf("WriteTimeout=%v must be greater than BotPublishTimeout=%v", cfg.WriteTimeout, cfg.BotPublishTimeout)
+	}
 }
 
 func TestPublicBaseURLTrimsTrailingSlash(t *testing.T) {
@@ -40,14 +49,27 @@ func TestCORSAllowedOriginsFromEnv(t *testing.T) {
 }
 
 func TestValidateAPI(t *testing.T) {
+	validParse := func(c Config) Config {
+		c.SkillParseTimeout = time.Minute
+		c.SkillParseStaleTimeout = 5 * time.Minute
+		return c
+	}
 	tests := []struct {
 		name    string
 		cfg     Config
 		wantErr bool
 	}{
-		{name: "valid", cfg: Config{MySQLDSN: "dsn", APIPort: "8092"}},
-		{name: "missing dsn", cfg: Config{APIPort: "8092"}, wantErr: true},
-		{name: "invalid port", cfg: Config{MySQLDSN: "dsn", APIPort: "0"}, wantErr: true},
+		{name: "valid", cfg: validParse(Config{MySQLDSN: "dsn", APIPort: "8092"})},
+		{name: "missing dsn", cfg: validParse(Config{APIPort: "8092"}), wantErr: true},
+		{name: "invalid port", cfg: validParse(Config{MySQLDSN: "dsn", APIPort: "0"}), wantErr: true},
+		{name: "staleTimeout <= parseTimeout", cfg: Config{
+			MySQLDSN: "dsn", APIPort: "8092",
+			SkillParseTimeout: 5 * time.Minute, SkillParseStaleTimeout: 5 * time.Minute,
+		}, wantErr: true},
+		{name: "writeTimeout <= botPublishTimeout", cfg: validParse(Config{
+			MySQLDSN: "dsn", APIPort: "8092",
+			WriteTimeout: 30 * time.Second, BotPublishTimeout: 2 * time.Minute,
+		}), wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -81,7 +103,8 @@ func TestProbeAllowPrivateFromEnv(t *testing.T) {
 }
 
 func TestAuthEnabledRequiresOctoAPIURL(t *testing.T) {
-	cfg := Config{MySQLDSN: "dsn", APIPort: "8092", AuthEnabled: true}
+	cfg := Config{MySQLDSN: "dsn", APIPort: "8092", AuthEnabled: true,
+		SkillParseTimeout: time.Minute, SkillParseStaleTimeout: 5 * time.Minute}
 	if err := cfg.ValidateAPI(); err == nil {
 		t.Fatal("ValidateAPI() error=nil want OCTO_API_URL error")
 	}
@@ -96,6 +119,7 @@ func TestOSSConfigDefaults(t *testing.T) {
 	t.Setenv("OSS_KEY_PREFIX", "")
 	t.Setenv("OSS_PATH_STYLE", "")
 	t.Setenv("OSS_PUBLIC_ENDPOINT", "")
+	t.Setenv("OSS_PUBLIC_PATH_STYLE", "")
 	t.Setenv("OSS_SIGNING_HOST", "")
 	t.Setenv("MAX_UPLOAD_MB", "")
 
@@ -109,6 +133,9 @@ func TestOSSConfigDefaults(t *testing.T) {
 	if cfg.MaxUploadMB != 20 {
 		t.Fatalf("MaxUploadMB=%d want=20", cfg.MaxUploadMB)
 	}
+	if cfg.OSSPublicPathStyle {
+		t.Fatal("OSSPublicPathStyle=true want default false")
+	}
 }
 
 func TestOSSConfigFromEnv(t *testing.T) {
@@ -121,6 +148,7 @@ func TestOSSConfigFromEnv(t *testing.T) {
 	t.Setenv("OSS_KEY_PREFIX", "/im-test/marketplace/")
 	t.Setenv("OSS_PATH_STYLE", "false")
 	t.Setenv("OSS_PUBLIC_ENDPOINT", "https://cdn.example.com/")
+	t.Setenv("OSS_PUBLIC_PATH_STYLE", "true")
 	t.Setenv("OSS_SIGNING_HOST", "my-bucket.cos.ap-beijing.myqcloud.com")
 	t.Setenv("OSS_DOWNLOAD_SIGNED", "true")
 	t.Setenv("MAX_UPLOAD_MB", "50")
@@ -143,6 +171,9 @@ func TestOSSConfigFromEnv(t *testing.T) {
 	}
 	if cfg.OSSPublicEndpoint != "https://cdn.example.com" {
 		t.Fatalf("OSSPublicEndpoint=%q", cfg.OSSPublicEndpoint)
+	}
+	if !cfg.OSSPublicPathStyle {
+		t.Fatal("OSSPublicPathStyle=false want true")
 	}
 	if cfg.OSSSigningHost != "my-bucket.cos.ap-beijing.myqcloud.com" {
 		t.Fatalf("OSSSigningHost=%q", cfg.OSSSigningHost)

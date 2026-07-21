@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+
+	"github.com/Mininglamp-OSS/octo-marketplace/internal/model"
 )
 
 // ParseTaskRow holds parse_task data needed for skill creation.
@@ -20,6 +23,10 @@ type ParseTaskRow struct {
 	ResultVersion     string
 	ResultTags        json.RawMessage
 	ResultReadme      *string
+	ResultID          string
+	ResultForkedFrom  string
+	ResultMetadata    json.RawMessage
+	Attempts          int
 	OwnerID           string
 	SpaceID           string
 	SkillID           string
@@ -30,21 +37,28 @@ func (r *Repo) GetParseTask(ctx context.Context, id string) (*ParseTaskRow, erro
 	query := `
 		SELECT id, upload_id, file_name, file_size, file_url, file_sha256, status,
 			result_name, result_description, result_version, result_tags, result_readme,
+			result_id, result_forked_from, result_metadata, attempts,
 			owner_id, space_id, skill_id
 		FROM parse_tasks
 		WHERE id = ?
 	`
 	var pt ParseTaskRow
+	var resultMetadata sql.NullString
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&pt.ID, &pt.UploadID, &pt.FileName, &pt.FileSize, &pt.FileURL, &pt.FileSHA256,
 		&pt.Status, &pt.ResultName, &pt.ResultDescription, &pt.ResultVersion,
-		&pt.ResultTags, &pt.ResultReadme, &pt.OwnerID, &pt.SpaceID, &pt.SkillID,
+		&pt.ResultTags, &pt.ResultReadme,
+		&pt.ResultID, &pt.ResultForkedFrom, &resultMetadata, &pt.Attempts,
+		&pt.OwnerID, &pt.SpaceID, &pt.SkillID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if resultMetadata.Valid {
+		pt.ResultMetadata = json.RawMessage(resultMetadata.String)
 	}
 	return &pt, nil
 }
@@ -71,9 +85,10 @@ func (r *Repo) MarkParseTaskConsumed(ctx context.Context, id, ownerID, spaceID, 
 	return nil
 }
 
-// UpdateSkillAndConsumeTask updates a skill and marks the parse task as consumed
-// within a single transaction, preventing duplicate reupload consumption.
-func (r *Repo) UpdateSkillAndConsumeTask(ctx context.Context, skillID string, p UpdateParams, parseTaskID, ownerID, spaceID, taskSkillID string) error {
+// UpdateSkillAndConsumeTask updates a skill, inserts a new version record,
+// and marks the parse task as consumed within a single transaction, preventing
+// duplicate reupload consumption.
+func (r *Repo) UpdateSkillAndConsumeTask(ctx context.Context, skillID string, p UpdateParams, parseTaskID, ownerID, spaceID, taskSkillID string, ver *model.SkillVersion) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -96,16 +111,48 @@ func (r *Repo) UpdateSkillAndConsumeTask(ctx context.Context, skillID string, p 
 		return ErrParseTaskAlreadyConsumed
 	}
 
+	if p.Tags != nil {
+		tagIDs, err := resolveOrCreateTagIDs(ctx, tx, spaceID, ownerID, p.TagNames)
+		if err != nil {
+			return err
+		}
+		tags, err := tagIDsToRaw(tagIDs)
+		if err != nil {
+			return err
+		}
+		p.Tags = tags
+	}
+
 	// Build and execute the skill update
 	sets, args := buildUpdateSets(p)
 	if len(sets) == 0 {
 		return tx.Commit()
 	}
 
-	query := "UPDATE skills SET " + joinStrings(sets, ", ") + " WHERE id = ?"
-	args = append(args, skillID)
-	if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+	query := "UPDATE skills SET " + joinStrings(sets, ", ") + " WHERE id = ? AND owner_id = ? AND space_id = ? AND is_deleted = 0"
+	args = append(args, skillID, ownerID, spaceID)
+	result, err := tx.ExecContext(ctx, query, args...)
+	if err != nil {
 		return mapDuplicateName(err)
+	}
+	affected, err = result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return ErrSkillNotFound
+	}
+
+	// Insert the new version record in the same transaction
+	if ver != nil {
+		_, err = tx.ExecContext(ctx,
+			`INSERT INTO skill_versions (id, skill_id, version, changelog, storage, changed_by)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+			ver.ID, ver.SkillID, ver.Version, ver.Changelog, ver.Storage, ver.ChangedBy,
+		)
+		if err != nil {
+			return fmt.Errorf("insert version: %w", err)
+		}
 	}
 
 	return tx.Commit()
