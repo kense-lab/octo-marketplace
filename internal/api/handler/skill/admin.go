@@ -30,7 +30,7 @@ func (h *Handler) RegisterAdmin(r *gin.Engine, adminAuth *middleware.AdminAuthen
 // @ID admin_skill.list
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param q query string false "Search name/description"
 // @Param category_id query string false "Category ID"
 // @Param tags query string false "Comma-separated tags"
@@ -88,7 +88,7 @@ func (h *Handler) AdminList(c *gin.Context) {
 // @ID admin_skill.get
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_id path string true "Skill ID"
 // @Success 200 {object} apiresponse.Data[skillsvc.SkillItem]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
@@ -133,7 +133,7 @@ type AdminCreateRequest struct {
 // @ID admin_skill.create
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param body body AdminCreateRequest true "Skill"
 // @Success 201 {object} apiresponse.Data[skillsvc.SkillItem]
 // @Failure 400 {object} apiresponse.Error "VALIDATION_ERROR"
@@ -210,7 +210,7 @@ type AdminUpdateRequest struct {
 // @ID admin_skill.update
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_id path string true "Skill ID"
 // @Param body body AdminUpdateRequest true "Skill changes"
 // @Success 200 {object} apiresponse.Data[skillsvc.SkillItem]
@@ -270,7 +270,7 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 // @ID admin_skill.delete
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_id path string true "Skill ID"
 // @Success 200 {object} apiresponse.Data[apiresponse.EmptyResp]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
@@ -303,7 +303,7 @@ func (h *Handler) AdminDelete(c *gin.Context) {
 // @ID admin_skill.skillmd.get
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_id path string true "Skill ID"
 // @Success 200 {object} apiresponse.Data[SkillMDResponse]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
@@ -348,7 +348,7 @@ type AdminReuploadRequest struct {
 // @ID admin_skill.reupload
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_id path string true "Skill ID"
 // @Param body body AdminReuploadRequest true "Reupload params"
 // @Success 200 {object} apiresponse.Data[skillsvc.SkillItem]

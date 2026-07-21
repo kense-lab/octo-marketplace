@@ -1023,10 +1023,13 @@ components:
         type: string
       type: object
   securitySchemes:
-    Bearer:
+    AdminToken:
       in: header
-      name: Authorization
+      name: X-Admin-Token
       type: apiKey
+    Bearer:
+      scheme: bearer
+      type: http
 info:
   contact:
     name: OCTO API Team
@@ -1117,7 +1120,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: List system MCP servers
       tags:
       - admin_mcp
@@ -1179,7 +1182,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Create system MCP server
       tags:
       - admin_mcp
@@ -1237,7 +1240,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Probe system MCP server
       tags:
       - admin_mcp
@@ -1289,7 +1292,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Delete system MCP server
       tags:
       - admin_mcp
@@ -1340,7 +1343,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Get system MCP server
       tags:
       - admin_mcp
@@ -1409,7 +1412,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Update system MCP server
       tags:
       - admin_mcp
@@ -1454,7 +1457,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: List Skill categories (admin)
       tags:
       - skill_category
@@ -1517,7 +1520,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Create Skill category
       tags:
       - skill_category
@@ -1576,7 +1579,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Delete Skill category
       tags:
       - skill_category
@@ -1640,7 +1643,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Update Skill category
       tags:
       - skill_category
@@ -1716,7 +1719,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: List public skills (admin)
       tags:
       - admin_skill
@@ -1778,7 +1781,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Create public skill (admin)
       tags:
       - admin_skill
@@ -1830,7 +1833,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Delete public skill (admin)
       tags:
       - admin_skill
@@ -1881,7 +1884,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Get public skill detail (admin)
       tags:
       - admin_skill
@@ -1950,7 +1953,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Update public skill (admin)
       tags:
       - admin_skill
@@ -2010,7 +2013,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Download public Skill archive (admin)
       tags:
       - admin_skill
@@ -2080,7 +2083,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Reupload public skill version (admin)
       tags:
       - admin_skill
@@ -2132,7 +2135,7 @@ paths:
                 $ref: '#/components/schemas/github_com_Mininglamp-OSS_octo-marketplace_internal_api_response.Error'
           description: INTERNAL_ERROR
       security:
-      - Bearer: []
+      - AdminToken: []
       summary: Get SKILL.md (admin)
       tags:
       - admin_skill

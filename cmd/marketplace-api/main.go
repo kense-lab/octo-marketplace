@@ -47,9 +47,11 @@ import (
 // @tag.description Current authenticated user context
 // @tag.name metrics
 // @tag.description Marketplace interaction metrics
-// @securityDefinitions.apikey Bearer
+// @securityDefinitions.bearerauth Bearer
+
+// @securityDefinitions.apikey AdminToken
 // @in header
-// @name Authorization
+// @name X-Admin-Token
 
 func main() {
 	gin.SetMode(gin.ReleaseMode)

@@ -702,7 +702,7 @@ func (h *Handler) Download(c *gin.Context) {
 // @ID admin_skill.download
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_id path string true "Skill ID"
 // @Param format query string false "Use json to return the download URL"
 // @Success 200 {object} apiresponse.Data[DownloadResponse]

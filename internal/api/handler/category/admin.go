@@ -39,7 +39,7 @@ type AdminCategoryRequest struct {
 // @ID skill_category.admin.list
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Success 200 {object} apiresponse.Data[[]categorysvc.AdminItem]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
 // @Failure 403 {object} apiresponse.Error "FORBIDDEN"
@@ -66,7 +66,7 @@ func (h *Handler) AdminList(c *gin.Context) {
 // @ID skill_category.create
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param body body AdminCategoryRequest true "Skill category"
 // @Success 201 {object} apiresponse.Data[categorysvc.AdminItem]
 // @Failure 400 {object} apiresponse.Error "VALIDATION_ERROR"
@@ -105,7 +105,7 @@ func (h *Handler) AdminCreate(c *gin.Context) {
 // @ID skill_category.update
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_category_id path string true "Skill category ID"
 // @Param body body AdminCategoryRequest true "Skill category changes"
 // @Success 200 {object} apiresponse.Data[categorysvc.AdminItem]
@@ -148,7 +148,7 @@ func (h *Handler) AdminUpdate(c *gin.Context) {
 // @ID skill_category.delete
 // @Accept json
 // @Produce json
-// @Security Bearer
+// @Security AdminToken
 // @Param skill_category_id path string true "Skill category ID"
 // @Success 200 {object} apiresponse.Data[apiresponse.EmptyResp]
 // @Failure 401 {object} apiresponse.Error "AUTH_REQUIRED"
