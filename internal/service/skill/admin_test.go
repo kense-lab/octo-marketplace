@@ -503,7 +503,7 @@ func TestAdminList_OnlyReturnsPublic(t *testing.T) {
 	}).AddRow(
 		"sk-pub", "public-skill", "", "", "", "",
 		"desc", "", []byte(`[]`),
-		"admin", "Admin", "", "public", "1.0.0",
+		"owner-1", "Owner", "space-1", "public", "1.0.0",
 		"", "", "", int64(0), "",
 		time.Now(), time.Now(),
 		"1.0.0", "",
@@ -550,7 +550,7 @@ func TestAdminUpdate_InvalidTags(t *testing.T) {
 	}).AddRow(
 		"sk-up", "pub-skill", "", "", "", "",
 		"", "", []byte(`[]`),
-		"admin", "Admin", "", "public", "1.0.0",
+		"owner-1", "Owner", "space-1", "public", "1.0.0",
 		"", "", "", int64(0), "",
 		time.Now(), time.Now(),
 		"", "",
@@ -589,7 +589,7 @@ func TestAdminUpdate_UpsertsGlobalTags(t *testing.T) {
 	}).AddRow(
 		"sk-global", "pub-skill", "", "", "", "",
 		"", "", []byte(`[]`),
-		"admin", "Admin", "", "public", "1.0.0",
+		"owner-1", "Owner", "space-1", "public", "1.0.0",
 		"", "", "", int64(0), "",
 		time.Now(), time.Now(),
 		"", "",
@@ -598,10 +598,10 @@ func TestAdminUpdate_UpsertsGlobalTags(t *testing.T) {
 	mock.ExpectQuery("SELECT .+ FROM skills").WithArgs("sk-global").WillReturnRows(initial)
 	mock.ExpectBegin()
 	mock.ExpectExec("UPDATE skills SET tags = \\? WHERE id = \\? AND owner_id = \\? AND space_id = \\? AND is_deleted = 0").
-		WithArgs(`["official"]`, "sk-global", "admin", skillrepo.GlobalTagSpaceID).
+		WithArgs(`["official"]`, "sk-global", "owner-1", "space-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO skill_tags").
-		WithArgs(skillrepo.GlobalTagSpaceID, "official", "admin").
+		WithArgs(skillrepo.GlobalTagSpaceID, "official", "owner-1").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
@@ -616,7 +616,7 @@ func TestAdminUpdate_UpsertsGlobalTags(t *testing.T) {
 	}).AddRow(
 		"sk-global", "pub-skill", "", "", "", "",
 		"", "", []byte(`["official"]`),
-		"admin", "Admin", "", "public", "1.0.0",
+		"owner-1", "Owner", "space-1", "public", "1.0.0",
 		"", "", "", int64(0), "",
 		time.Now(), time.Now(),
 		"", "",

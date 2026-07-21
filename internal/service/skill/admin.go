@@ -292,7 +292,7 @@ func (s *Service) AdminUpdate(ctx context.Context, id string, p AdminUpdateParam
 		repoParams.TagNames = tagNames
 	}
 
-	_, err = s.repo.UpdateWithTags(ctx, id, skillrepo.GlobalTagSpaceID, row.OwnerID, repoParams)
+	_, err = s.repo.UpdateWithTagsScoped(ctx, id, row.SpaceID, row.OwnerID, skillrepo.GlobalTagSpaceID, row.OwnerID, repoParams)
 	if err != nil {
 		if errors.Is(err, skillrepo.ErrSkillNotFound) {
 			return nil, ErrNotFound

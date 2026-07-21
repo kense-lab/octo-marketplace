@@ -307,6 +307,10 @@ func (h *Handler) Create(c *gin.Context) {
 			apiresponse.Fail(c, http.StatusBadRequest, errcode.BadRequest, "source skill not found or inaccessible", nil, "")
 			return
 		}
+		if errors.Is(err, skillsvc.ErrForbidden) {
+			apiresponse.Fail(c, http.StatusForbidden, errcode.PermissionDenied, "public skills can only be changed by administrators", nil, "")
+			return
+		}
 		apiresponse.Fail(c, http.StatusInternalServerError, errcode.InternalError, "internal error", nil, "")
 		return
 	}
@@ -410,6 +414,10 @@ func (h *Handler) Update(c *gin.Context) {
 			apiresponse.Fail(c, http.StatusBadRequest, errcode.BadRequest, "visibility must be one of: public, space, private", nil, "")
 			return
 		}
+		if errors.Is(err, skillsvc.ErrForbidden) {
+			apiresponse.Fail(c, http.StatusForbidden, errcode.PermissionDenied, "public skills can only be changed by administrators", nil, "")
+			return
+		}
 		apiresponse.Fail(c, http.StatusInternalServerError, errcode.InternalError, "internal error", nil, "")
 		return
 	}
@@ -475,6 +483,10 @@ func (h *Handler) Delete(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, skillsvc.ErrNotFound) {
 			apiresponse.Fail(c, http.StatusNotFound, errcode.NotFound, "not found", nil, "")
+			return
+		}
+		if errors.Is(err, skillsvc.ErrForbidden) {
+			apiresponse.Fail(c, http.StatusForbidden, errcode.PermissionDenied, "public skills can only be changed by administrators", nil, "")
 			return
 		}
 		apiresponse.Fail(c, http.StatusInternalServerError, errcode.InternalError, "internal error", nil, "")

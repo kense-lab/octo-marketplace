@@ -118,6 +118,13 @@ func (r *Repo) Update(ctx context.Context, id string, p UpdateParams) (int64, er
 // UpdateWithTags updates a skill and syncs newly introduced tags into the
 // Space-level tag index in one transaction.
 func (r *Repo) UpdateWithTags(ctx context.Context, id, spaceID, ownerID string, p UpdateParams) (int64, error) {
+	return r.UpdateWithTagsScoped(ctx, id, spaceID, ownerID, spaceID, ownerID, p)
+}
+
+// UpdateWithTagsScoped updates a skill using the skill row's ownership scope,
+// while allowing callers such as admin flows to sync tags into a different tag
+// bucket.
+func (r *Repo) UpdateWithTagsScoped(ctx context.Context, id, skillSpaceID, skillOwnerID, tagSpaceID, tagCreatedBy string, p UpdateParams) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -128,7 +135,7 @@ func (r *Repo) UpdateWithTags(ctx context.Context, id, spaceID, ownerID string, 
 	var affected int64
 	if len(sets) > 0 {
 		query := fmt.Sprintf("UPDATE skills SET %s WHERE id = ? AND owner_id = ? AND space_id = ? AND is_deleted = 0", strings.Join(sets, ", "))
-		args = append(args, id, ownerID, spaceID)
+		args = append(args, id, skillOwnerID, skillSpaceID)
 
 		result, err := tx.ExecContext(ctx, query, args...)
 		if err != nil {
@@ -142,7 +149,7 @@ func (r *Repo) UpdateWithTags(ctx context.Context, id, spaceID, ownerID string, 
 			return 0, ErrSkillNotFound
 		}
 	}
-	if err := upsertTags(ctx, tx, spaceID, ownerID, p.TagNames); err != nil {
+	if err := upsertTags(ctx, tx, tagSpaceID, tagCreatedBy, p.TagNames); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {

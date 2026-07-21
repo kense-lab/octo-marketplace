@@ -238,6 +238,14 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*SkillItem, error
 		return nil, ErrInvalidParseTask
 	}
 
+	visibility, err := normalizeVisibility(p.Visibility, "space")
+	if err != nil {
+		return nil, err
+	}
+	if visibility == model.VisibilityPublic {
+		return nil, ErrForbidden
+	}
+
 	// Validate category
 	if p.CategoryID != "" {
 		exists, err := s.catRepo.Exists(ctx, p.CategoryID)
@@ -275,11 +283,6 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*SkillItem, error
 	tags, tagNames, err := normalizeRawTags(tags)
 	if err != nil {
 		return nil, ErrInvalidTags
-	}
-
-	visibility, err := normalizeVisibility(p.Visibility, "space")
-	if err != nil {
-		return nil, err
 	}
 
 	// Determine source_skill_id: explicit request first, else SKILL.md forked_from.
@@ -435,6 +438,9 @@ func (s *Service) Update(ctx context.Context, id, userID, spaceID string, p Upda
 	if row == nil || row.OwnerID != userID || row.SpaceID != spaceID {
 		return nil, ErrNotFound
 	}
+	if row.Visibility == string(model.VisibilityPublic) {
+		return nil, ErrForbidden
+	}
 
 	// Validate category if changing
 	if p.CategoryID != nil && *p.CategoryID != "" {
@@ -452,6 +458,9 @@ func (s *Service) Update(ctx context.Context, id, userID, spaceID string, p Upda
 		normalized, err := normalizeVisibility(*p.Visibility, "")
 		if err != nil {
 			return nil, err
+		}
+		if normalized == model.VisibilityPublic {
+			return nil, ErrForbidden
 		}
 		vis = &normalized
 	}
@@ -700,6 +709,10 @@ func (s *Service) Delete(ctx context.Context, id, userID, spaceID string) error 
 	if row == nil || row.OwnerID != userID || row.SpaceID != spaceID {
 		return ErrNotFound
 	}
+	if row.Visibility == string(model.VisibilityPublic) {
+		return ErrForbidden
+	}
+
 	versions, err := s.repo.ListVersions(ctx, id)
 	if err != nil {
 		return err
