@@ -836,6 +836,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
           uniqueItems: false
         version:
@@ -852,6 +853,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
           uniqueItems: false
         version:
@@ -874,6 +876,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
           uniqueItems: false
       type: object
@@ -898,6 +901,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
           uniqueItems: false
         version:
@@ -991,6 +995,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
           uniqueItems: false
         version:
@@ -1021,6 +1026,7 @@ components:
         tags:
           items:
             type: string
+          maxItems: 10
           type: array
           uniqueItems: false
         upload_url:
