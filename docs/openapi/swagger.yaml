@@ -835,6 +835,7 @@ components:
           type: string
         tags:
           items:
+            maxLength: 24
             type: string
           maxItems: 10
           type: array
@@ -852,6 +853,7 @@ components:
           type: string
         tags:
           items:
+            maxLength: 24
             type: string
           maxItems: 10
           type: array
@@ -875,6 +877,7 @@ components:
           type: string
         tags:
           items:
+            maxLength: 24
             type: string
           maxItems: 10
           type: array
@@ -900,6 +903,7 @@ components:
           type: string
         tags:
           items:
+            maxLength: 24
             type: string
           maxItems: 10
           type: array
@@ -994,6 +998,7 @@ components:
           type: string
         tags:
           items:
+            maxLength: 24
             type: string
           maxItems: 10
           type: array
@@ -1025,6 +1030,7 @@ components:
           type: string
         tags:
           items:
+            maxLength: 24
             type: string
           maxItems: 10
           type: array

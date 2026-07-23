@@ -224,7 +224,7 @@ type CreateRequest struct {
 	IconURL       string   `json:"icon_url"`
 	Description   string   `json:"description"`
 	CategoryID    string   `json:"category_id"`
-	Tags          []string `json:"tags" binding:"omitempty,max=10,dive,max=24"`
+	Tags          []string `json:"tags" binding:"omitempty,max=10,dive,max=24" maxLength:"24"`
 	Visibility    string   `json:"visibility"`
 	Version       string   `json:"version"`
 	Changelog     string   `json:"changelog"`
@@ -333,7 +333,7 @@ type UpdateRequest struct {
 	IconURL     *string   `json:"icon_url"`
 	Description *string   `json:"description"`
 	CategoryID  *string   `json:"category_id"`
-	Tags        *[]string `json:"tags" binding:"omitempty,max=10,dive,max=24"`
+	Tags        *[]string `json:"tags" binding:"omitempty,max=10,dive,max=24" maxLength:"24"`
 	Visibility  *string   `json:"visibility"`
 	Version     *string   `json:"version"`
 	ParseTaskID string    `json:"parse_task_id"`

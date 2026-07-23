@@ -122,7 +122,7 @@ type AdminCreateRequest struct {
 	IconURL     string   `json:"icon_url"`
 	Description string   `json:"description"`
 	CategoryID  string   `json:"category_id"`
-	Tags        []string `json:"tags" binding:"omitempty,max=10,dive,max=24"`
+	Tags        []string `json:"tags" binding:"omitempty,max=10,dive,max=24" maxLength:"24"`
 	Version     string   `json:"version"`
 }
 
@@ -200,7 +200,7 @@ type AdminUpdateRequest struct {
 	IconURL     *string   `json:"icon_url"`
 	Description *string   `json:"description"`
 	CategoryID  *string   `json:"category_id"`
-	Tags        *[]string `json:"tags" binding:"omitempty,max=10,dive,max=24"`
+	Tags        *[]string `json:"tags" binding:"omitempty,max=10,dive,max=24" maxLength:"24"`
 }
 
 // AdminUpdate godoc
@@ -338,7 +338,7 @@ type AdminReuploadRequest struct {
 	ParseTaskID string   `json:"parse_task_id" binding:"required"`
 	Version     string   `json:"version"`
 	Changelog   string   `json:"changelog"`
-	Tags        []string `json:"tags" binding:"omitempty,max=10,dive,max=24"`
+	Tags        []string `json:"tags" binding:"omitempty,max=10,dive,max=24" maxLength:"24"`
 }
 
 // AdminReupload godoc
